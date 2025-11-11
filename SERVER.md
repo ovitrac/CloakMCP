@@ -1,6 +1,6 @@
 # CloakMCP Server Documentation
 
-**Version**: 0.2.5
+**Version**: 0.3.0
 **Date**: 2025-11-11
 **Maintainer**: Olivier Vitrac — Adservio Innovation Lab
 
@@ -187,11 +187,15 @@ mkdir -p keys
 openssl rand -hex 32 > keys/mcp_api_token
 chmod 600 keys/mcp_api_token
 
-# Start server (localhost only - DEFAULT)
+# Start server (localhost only - DEFAULT - RECOMMENDED)
 uvicorn mcp.server:app --host 127.0.0.1 --port 8765
 
-# Optional: LAN access (trusted network only)
-uvicorn mcp.server:app --host 0.0.0.0 --port 8765
+# ⚠️  SECURITY WARNING: LAN/network access
+# Only use --host 0.0.0.0 on fully trusted networks with proper firewall rules
+# Exposing this server publicly transmits secrets over the network and defeats
+# the entire security model of CloakMCP. Use TLS, authentication, and VPN.
+# YOU HAVE BEEN WARNED.
+uvicorn mcp.server:app --host 0.0.0.0 --port 8765  # NOT RECOMMENDED
 ```
 
 #### Server Features
@@ -391,7 +395,19 @@ uvicorn mcp.server:app --host 127.0.0.1 --port 8765 --reload
 
 ### Production (Local Network)
 
-**⚠️ Warning**: Only expose on trusted local networks (e.g., office LAN).
+**🚨 CRITICAL SECURITY WARNING 🚨**:
+
+**DO NOT expose CloakMCP server to the public internet or untrusted networks.**
+
+When you use `--host 0.0.0.0`, you are transmitting secrets over the network, which **defeats the core security model** of CloakMCP (local-only secret storage).
+
+Only proceed if:
+- You have a fully trusted, firewalled local network
+- You use TLS termination with valid certificates
+- You have strong authentication (rotate tokens regularly)
+- You understand the risks of network-based secret transmission
+
+**RECOMMENDED**: Use `--host 127.0.0.1` (localhost only) and never expose beyond your machine.
 
 ```bash
 # 1. Install with security dependencies
@@ -411,9 +427,19 @@ uvicorn mcp.server:app --host 0.0.0.0 --port 8765 --workers 2
 
 ### Docker (Optional)
 
-**⚠️ Not recommended**: Vaults should remain on host filesystem for security.
+**🚨 STRONGLY NOT RECOMMENDED 🚨**:
 
-If you must use Docker:
+Docker containers inherently expose services over network interfaces. Using CloakMCP in Docker:
+- Requires `--host 0.0.0.0` which transmits secrets over network
+- Adds container orchestration as attack surface
+- Defeats the "local-first" security model
+
+**ONLY use Docker if**:
+- You bind to localhost only (`-p 127.0.0.1:8765:8765`)
+- Container runs on the same machine as the user
+- You fully understand the security implications
+
+If you must use Docker (for testing/development only):
 
 ```dockerfile
 FROM python:3.10-slim
@@ -630,4 +656,4 @@ uvicorn mcp.server:app --host 127.0.0.1 --port 8765 --log-level warning
 **Prepared by**: Olivier Vitrac — Adservio Innovation Lab
 **Date**: 2025-11-11
 **License**: MIT
-**Project**: CloakMCP v0.2.5
+**Project**: CloakMCP v0.3.0

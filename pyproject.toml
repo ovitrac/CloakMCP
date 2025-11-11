@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "mcp"
-version = "0.2.5"
+version = "0.3.0"
 description = "Micro-Cleanse Preprocessor: local secret-removal agent (with vault pack/unpack)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +20,11 @@ dependencies = [
 
 [project.scripts]
 mcp = "mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mcp*"]
+exclude = ["tests*", "examples*", "keys*", "audit*", "deploy*", "api*"]
 
 [tool.black]
 line-length = 100

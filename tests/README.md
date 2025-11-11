@@ -1,6 +1,6 @@
 # CloakMCP Test Suite
 
-Comprehensive test suite for CloakMCP v0.2.5.
+Comprehensive test suite for CloakMCP v0.3.0.
 
 ## Test Files
 
