@@ -1,0 +1,10 @@
+{
+  "files.trimTrailingWhitespace": true,
+  "editor.rulers": [100],
+  "editor.formatOnSave": true,
+  "python.formatting.provider": "black",
+  "python.analysis.typeCheckingMode": "strict",
+  "terminal.integrated.env.linux": {
+    "PYTHONUTF8": "1"
+  }
+}

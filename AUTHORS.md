@@ -1,0 +1,2 @@
+- Olivier Vitrac (founder/lead)
+- Contributors: (add yourself via PR)

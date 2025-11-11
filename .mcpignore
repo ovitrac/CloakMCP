@@ -1,0 +1,17 @@
+# Skip binaries & build artifacts
+.git/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+audit/
+keys/
+.vscode/

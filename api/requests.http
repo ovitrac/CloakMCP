@@ -1,0 +1,16 @@
+@token={{$dotenv keys/mcp_api_token}}
+@base=http://127.0.0.1:8765
+
+### Health
+GET {{base}}/health
+Authorization: Bearer {{token}}
+
+### Sanitize
+POST {{base}}/sanitize
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "text": "Email: jane@internal.company\nAKIAABCDEFGHIJKLMNOP",
+  "dry_run": false
+}

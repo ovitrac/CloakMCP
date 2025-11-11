@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MCP: Sanitize current file → preview",
+      "type": "shell",
+      "command": "mcp sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "MCP: Scan current file (audit only)",
+      "type": "shell",
+      "command": "mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": { "reveal": "never", "panel": "shared" }
+    },
+    {
+      "label": "MCP: Sanitize selection via API",
+      "type": "shell",
+      "command": "python - <<'PY'\nimport json,sys,os,urllib.request\ntext=''.join(sys.stdin.read())\nbody=json.dumps({'text':text,'dry_run':False}).encode()\nreq=urllib.request.Request('http://127.0.0.1:8765/sanitize', data=body, method='POST')\nreq.add_header('Content-Type','application/json')\nreq.add_header('Authorization', 'Bearer ' + open('keys/mcp_api_token').read().strip())\nprint(urllib.request.urlopen(req).read().decode())\nPY",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "options": { "cwd": "${workspaceFolder}" }
+    }
+  ]
+}

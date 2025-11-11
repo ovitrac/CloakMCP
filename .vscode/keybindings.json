@@ -1,0 +1,4 @@
+[
+  { "key": "ctrl+alt+s", "command": "workbench.action.tasks.runTask", "args": "MCP: Sanitize current file → preview" },
+  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "MCP: Scan current file (audit only)" }
+]
