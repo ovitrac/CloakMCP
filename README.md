@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.2.0--beta-green.svg)](https://github.com/yourusername/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0--beta-green.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -88,7 +88,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/CloakMCP.git
+git clone https://github.com/ovitrac/CloakMCP.git
 cd CloakMCP
 
 # Create virtual environment
@@ -628,7 +628,7 @@ open htmlcov/index.html      # macOS
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/CloakMCP.git
+git clone https://github.com/ovitrac/CloakMCP.git
 cd CloakMCP
 
 # Create virtual environment
@@ -839,9 +839,9 @@ See [`AUTHORS.md`](AUTHORS.md) for the full list of contributors.
 
 ## 🔗 Links
 
-- **GitHub Repository**: https://github.com/yourusername/CloakMCP
-- **Issue Tracker**: https://github.com/yourusername/CloakMCP/issues
-- **Discussions**: https://github.com/yourusername/CloakMCP/discussions
+- **GitHub Repository**: https://github.com/ovitrac/CloakMCP
+- **Issue Tracker**: https://github.com/ovitrac/CloakMCP/issues
+- **Discussions**: https://github.com/ovitrac/CloakMCP/discussions
 - **Documentation**: [Full docs](./docs/)
 - **License**: [MIT](./LICENSE)
 
@@ -852,9 +852,9 @@ See [`AUTHORS.md`](AUTHORS.md) for the full list of contributors.
 ### Getting Help
 
 1. **Read the docs**: Start with [`QUICKREF.md`](QUICKREF.md) or [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
-2. **Check issues**: Search [existing issues](https://github.com/yourusername/CloakMCP/issues)
-3. **Ask questions**: Open a [discussion](https://github.com/yourusername/CloakMCP/discussions)
-4. **Report bugs**: Create an [issue](https://github.com/yourusername/CloakMCP/issues/new)
+2. **Check issues**: Search [existing issues](https://github.com/ovitrac/CloakMCP/issues)
+3. **Ask questions**: Open a [discussion](https://github.com/ovitrac/CloakMCP/discussions)
+4. **Report bugs**: Create an [issue](https://github.com/ovitrac/CloakMCP/issues/new)
 
 ### Common Issues
 
@@ -880,13 +880,13 @@ CloakMCP protects **content confidentiality** (hides values), not **intent seman
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/CloakMCP&type=Date)](https://star-history.com/#yourusername/CloakMCP&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ovitrac/CloakMCP&type=Date)](https://star-history.com/#ovitrac/CloakMCP&Date)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by [Olivier Vitrac](https://github.com/yourusername) at [Adservio Innovation Lab](https://adservio.fr)**
+**Made with ❤️ by [Olivier Vitrac](https://github.com/ovitrac) at [Adservio Innovation Lab](https://adservio.fr)**
 
 **⭐ Star us on GitHub — it helps!**
 
