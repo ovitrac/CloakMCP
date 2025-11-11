@@ -79,3 +79,29 @@ class Vault:
 
     def secret_for(self, tag: str) -> Optional[str]:
         return self._data.get(tag)
+
+    def export_to_json(self, output_path: str) -> None:
+        """Export vault contents to an encrypted JSON file."""
+        raw = json.dumps(self._data, ensure_ascii=False, indent=2).encode("utf-8")
+        enc = self.fernet.encrypt(raw)
+        with open(output_path, "wb") as f:
+            f.write(enc)
+        try:
+            os.chmod(output_path, 0o600)
+        except PermissionError:
+            pass
+
+    def import_from_json(self, input_path: str) -> None:
+        """Import vault contents from an encrypted JSON file."""
+        with open(input_path, "rb") as f:
+            enc = f.read()
+        raw = self.fernet.decrypt(enc)
+        self._data = json.loads(raw.decode("utf-8"))
+        self._write()
+
+    def get_stats(self) -> Dict[str, int]:
+        """Get vault statistics."""
+        return {
+            "total_secrets": len(self._data),
+            "unique_tags": len(set(self._data.keys())),
+        }

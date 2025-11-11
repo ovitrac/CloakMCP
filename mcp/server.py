@@ -2,11 +2,21 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import FastAPI, Depends, Header, HTTPException, status
+from fastapi import FastAPI, Depends, Header, HTTPException, status, Request
 from pydantic import BaseModel, Field
 
 from .policy import Policy
 from .cli import sanitize_text
+
+# Rate limiting imports (optional dependency)
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    RATE_LIMITING_ENABLED = False
+    Limiter = None
 
 def load_api_token(path: str = "./keys/mcp_api_token") -> str:
     try:
@@ -49,8 +59,18 @@ class StatusResponse(BaseModel):
 app = FastAPI(
     title="MCP (Micro-Cleanse Preprocessor) — Local API",
     description="Local-only secret removal proxy. Bind to 127.0.0.1 by default. DO NOT expose publicly.",
-    version="0.2.0",
+    version="0.2.5",
 )
+
+# Initialize rate limiter if available
+if RATE_LIMITING_ENABLED:
+    limiter = Limiter(key_func=get_remote_address, default_limits=["10/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    print("Rate limiting enabled: 10 requests/minute per IP", flush=True)
+else:
+    limiter = None
+    print("Warning: Rate limiting not available (install slowapi: pip install slowapi)", flush=True)
 
 def policy_hash(path: str) -> str:
     import hashlib
@@ -58,18 +78,24 @@ def policy_hash(path: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()
 
 @app.get("/health", response_model=StatusResponse)
-def health(_: None = Depends(bearer_auth)):
+def health(request: Request, _: None = Depends(bearer_auth)):
+    if RATE_LIMITING_ENABLED and limiter:
+        limiter.limit("10/minute")(lambda: None)()
     pol_path = DEFAULT_POLICY
     return StatusResponse(status="ok", policy_path=pol_path, policy_sha256=policy_hash(pol_path))
 
 @app.post("/sanitize", response_model=SanitizeResponse)
-def sanitize(req: SanitizeRequest, _: None = Depends(bearer_auth)):
+def sanitize(request: Request, req: SanitizeRequest, _: None = Depends(bearer_auth)):
+    if RATE_LIMITING_ENABLED and limiter:
+        limiter.limit("10/minute")(lambda: None)()
     pol = Policy.load(req.policy_path)
     out, blocked = sanitize_text(req.text, pol, dry_run=req.dry_run)
     return SanitizeResponse(sanitized=out, blocked=blocked, policy_sha256=policy_hash(req.policy_path))
 
 @app.post("/scan", response_model=SanitizeResponse)
-def scan(req: SanitizeRequest, _: None = Depends(bearer_auth)):
+def scan(request: Request, req: SanitizeRequest, _: None = Depends(bearer_auth)):
+    if RATE_LIMITING_ENABLED and limiter:
+        limiter.limit("10/minute")(lambda: None)()
     pol = Policy.load(req.policy_path)
     out, blocked = sanitize_text(req.text, pol, dry_run=True)
     return SanitizeResponse(sanitized=out, blocked=blocked, policy_sha256=policy_hash(req.policy_path))

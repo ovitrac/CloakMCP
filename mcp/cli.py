@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import os
 import sys
 from typing import Tuple
 
@@ -9,6 +10,36 @@ from .scanner import scan
 from .actions import apply_action
 from .audit import write_event, now_iso
 from .dirpack import pack_dir, unpack_dir
+from .storage import Vault
+
+def _validate_input_path(path: str, arg_name: str = "input") -> None:
+    """Validate that an input path exists (or is stdin)."""
+    if path == "-":
+        return  # stdin is always valid
+    if not os.path.exists(path):
+        print(f"Error: {arg_name} path does not exist: {path}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(path):
+        print(f"Error: {arg_name} path is not a file: {path}", file=sys.stderr)
+        sys.exit(1)
+
+def _validate_dir_path(path: str, arg_name: str = "directory") -> None:
+    """Validate that a directory path exists."""
+    if not os.path.exists(path):
+        print(f"Error: {arg_name} path does not exist: {path}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isdir(path):
+        print(f"Error: {arg_name} path is not a directory: {path}", file=sys.stderr)
+        sys.exit(1)
+
+def _validate_policy_path(path: str) -> None:
+    """Validate that a policy file exists."""
+    if not os.path.exists(path):
+        print(f"Error: policy file does not exist: {path}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(path):
+        print(f"Error: policy path is not a file: {path}", file=sys.stderr)
+        sys.exit(1)
 
 def _load_text(path: str) -> str:
     if path == "-":
@@ -70,14 +101,29 @@ def main() -> None:
     s_unpack = sub.add_parser("unpack", help="Unpack a directory: restore tags from vault")
     s_unpack.add_argument("--dir", required=True, help="Directory to process")
 
+    s_vault_export = sub.add_parser("vault-export", help="Export vault to encrypted backup file")
+    s_vault_export.add_argument("--dir", required=True, help="Project directory")
+    s_vault_export.add_argument("--output", required=True, help="Output file path")
+
+    s_vault_import = sub.add_parser("vault-import", help="Import vault from encrypted backup file")
+    s_vault_import.add_argument("--dir", required=True, help="Project directory")
+    s_vault_import.add_argument("--input", required=True, help="Input file path")
+
+    s_vault_stats = sub.add_parser("vault-stats", help="Display vault statistics")
+    s_vault_stats.add_argument("--dir", required=True, help="Project directory")
+
     args = p.parse_args()
     if args.cmd == "scan":
+        _validate_policy_path(args.policy)
+        _validate_input_path(args.input, "input")
         policy = Policy.load(args.policy)
         text = _load_text(args.input)
         _ = sanitize_text(text, policy, dry_run=True)
         return
 
     if args.cmd == "sanitize":
+        _validate_policy_path(args.policy)
+        _validate_input_path(args.input, "input")
         policy = Policy.load(args.policy)
         text = _load_text(args.input)
         out, blocked = sanitize_text(text, policy, dry_run=False)
@@ -88,12 +134,49 @@ def main() -> None:
         return
 
     if args.cmd == "pack":
+        _validate_policy_path(args.policy)
+        _validate_dir_path(args.dir, "directory")
         policy = Policy.load(args.policy)
         pack_dir(args.dir, policy, prefix=args.prefix, in_place=True)
         return
 
     if args.cmd == "unpack":
+        _validate_dir_path(args.dir, "directory")
         unpack_dir(args.dir)
+        return
+
+    if args.cmd == "vault-export":
+        _validate_dir_path(args.dir, "directory")
+        vault = Vault(args.dir)
+        vault.export_to_json(args.output)
+        stats = vault.get_stats()
+        print(f"Vault exported to {args.output}", file=sys.stderr)
+        print(f"  Total secrets: {stats['total_secrets']}", file=sys.stderr)
+        print(f"  Vault location: {vault.vault_path}", file=sys.stderr)
+        print(f"  Key location: {vault.key_path}", file=sys.stderr)
+        return
+
+    if args.cmd == "vault-import":
+        _validate_dir_path(args.dir, "directory")
+        _validate_input_path(args.input, "input")
+        vault = Vault(args.dir)
+        vault.import_from_json(args.input)
+        stats = vault.get_stats()
+        print(f"Vault imported from {args.input}", file=sys.stderr)
+        print(f"  Total secrets: {stats['total_secrets']}", file=sys.stderr)
+        print(f"  Vault location: {vault.vault_path}", file=sys.stderr)
+        return
+
+    if args.cmd == "vault-stats":
+        _validate_dir_path(args.dir, "directory")
+        vault = Vault(args.dir)
+        stats = vault.get_stats()
+        print(f"Vault statistics for: {args.dir}", file=sys.stderr)
+        print(f"  Project slug: {vault.slug}", file=sys.stderr)
+        print(f"  Total secrets: {stats['total_secrets']}", file=sys.stderr)
+        print(f"  Unique tags: {stats['unique_tags']}", file=sys.stderr)
+        print(f"  Vault location: {vault.vault_path}", file=sys.stderr)
+        print(f"  Key location: {vault.key_path}", file=sys.stderr)
         return
 
 if __name__ == "__main__":

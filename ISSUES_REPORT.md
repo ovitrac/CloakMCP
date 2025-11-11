@@ -1,4 +1,4 @@
-# CloakMCP v0.2.0 — Pre-Deployment Issues Report
+# CloakMCP v0.2.5 — Pre-Deployment Issues Report
 
 **Date**: 2025-11-11
 **Reviewer**: Claude (Sonnet 4.5)

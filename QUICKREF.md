@@ -1,6 +1,6 @@
 # CloakMCP Quick Reference Card
 
-**Version**: 0.2.0 | **One-page cheat sheet for daily use**
+**Version**: 0.2.5 | **One-page cheat sheet for daily use**
 
 ---
 
@@ -258,7 +258,7 @@ xdg-open htmlcov/index.html
 - **API docs** (when server running): http://127.0.0.1:8765/docs
 - **License**: MIT (see `LICENSE`)
 - **Author**: Olivier Vitrac — Adservio Innovation Lab
-- **Version**: 0.2.0 (beta)
+- **Version**: 0.2.5 (beta)
 
 ---
 

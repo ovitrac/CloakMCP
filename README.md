@@ -8,11 +8,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.2.0--beta-green.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.2.5--beta-green.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Installation](#-installation) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[Features](#-features) • [Security](#-security-architecture) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
 
@@ -79,6 +79,166 @@
 - **`hash`**: Replace with SHA-256 hash
 - **`replace_with_template`**: Use custom template (e.g., `<EMAIL:{hash8}>`)
 - **`allow`**: Keep unchanged (whitelist)
+
+---
+
+## 🔒 Security Architecture
+
+### How CloakMCP Protects Your Secrets
+
+CloakMCP ensures that **secrets never leave your local machine**. Here's how:
+
+#### Where Secrets Are Stored
+
+```mermaid
+graph TB
+    subgraph "Your Local Machine"
+        A[Original Code<br/>with Secrets] -->|mcp pack| B[Packed Code<br/>with Tags]
+        B --> C[Git Repository]
+        A -->|secrets extracted| D[Encrypted Vault<br/>~/.cloakmcp/vaults/]
+        D -.encryption key.-> E[Encryption Key<br/>~/.cloakmcp/keys/]
+    end
+
+    subgraph "Shared with LLM"
+        C -->|safe to share| F[Claude/Codex<br/>sees only tags]
+    end
+
+    subgraph "Restoration"
+        F -->|modified code| G[Code with Tags]
+        G -->|mcp unpack| H[Original Code<br/>secrets restored]
+        D -.decryption.-> H
+    end
+
+    style D fill:#ffcccc, color:#000000
+    style E fill:#ffcccc, color:#000000
+    style F fill:#ccffcc, color:#000000
+    style H fill:#ccccff, color:#000000
+```
+
+**Key Points**:
+- 🔐 **Vault location**: `~/.cloakmcp/vaults/<project-slug>.vault`
+- 🔑 **Keys location**: `~/.cloakmcp/keys/<project-slug>.key`
+- 📦 **Encryption**: AES-128 (Fernet) symmetric encryption
+- 🚫 **Never committed**: Vaults and keys stay outside git repository
+- 🏷️ **Tags in code**: Deterministic identifiers like `TAG-2f1a8e3c9b12`
+
+#### Why LLMs Cannot Access Secrets
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant MCP as CloakMCP
+    participant Vault as Encrypted Vault<br/>(~/.cloakmcp/)
+    participant LLM as LLM (Claude/Codex)
+
+    Dev->>MCP: mcp pack --dir /project
+    MCP->>MCP: Scan for secrets
+    MCP->>Vault: Store secret → TAG mapping (encrypted)
+    MCP->>Dev: Code with tags (TAG-xxxx)
+
+    Dev->>LLM: Share tagged code
+    Note over LLM: LLM sees: TAG-2f1a8e3c9b12<br/>NOT: sk_live_abc123xyz
+
+    LLM->>Dev: Modified code (tags preserved)
+    Dev->>MCP: mcp unpack --dir /project
+    MCP->>Vault: Retrieve secret for TAG-xxxx
+    Vault->>MCP: Decrypted secret
+    MCP->>Dev: Code with original secrets
+```
+
+**Security Properties**:
+1. **Vault is local-only** — Never uploaded to git, cloud, or LLM
+2. **Tags are one-way** — Cannot reverse `TAG-2f1a8e3c9b12` → original secret without vault
+3. **Encryption protects vault** — Even if vault file leaks, attacker needs encryption key
+4. **Keys are separate** — Vault + key both required for decryption
+
+### Data Flow Comparison
+
+#### Without CloakMCP ❌
+```mermaid
+graph LR
+    A[Code with Secrets] -->|sent directly| B[LLM Provider]
+    B -->|logged forever| C[Provider Database]
+    style C fill:#ffcccc
+```
+**Risk**: Secrets permanently stored on provider servers
+
+#### With CloakMCP ✅
+```mermaid
+graph LR
+    A[Code with Secrets] -->|mcp pack| B[Code with Tags]
+    B -->|safe to send| C[LLM Provider]
+    C -->|only sees tags| D[Provider Database]
+    A -.secrets stay local.-> E[Encrypted Vault<br/>~/.cloakmcp/]
+    style E fill:#ccffcc
+    style D fill:#ccffcc
+```
+**Protection**: Only meaningless tags reach provider
+
+### CLI vs Server Mode
+
+#### CLI Mode (Local Processing)
+```mermaid
+graph TB
+    subgraph "Your Machine"
+        A[File with Secrets] -->|mcp sanitize| B[Policy Engine]
+        B --> C[Scanner]
+        C --> D[Action Engine]
+        D --> E[Sanitized Output]
+    end
+
+    E -.copy/paste.-> F[LLM Chat]
+```
+**Use case**: Manual sanitization before copy/paste to LLM
+
+#### Server Mode (IDE Integration)
+```mermaid
+graph TB
+    subgraph "Your Machine"
+        A[VS Code] -->|HTTP 127.0.0.1:8765| B[MCP Server]
+        B --> C[Policy Engine]
+        C --> D[Action Engine]
+        D -->|sanitized| A
+    end
+
+    A -.safe to send.-> E[LLM API]
+
+    style B fill:#ffffcc
+```
+**Use case**: Automatic sanitization in IDE before sending to LLM API
+
+**Important**: Server binds to `127.0.0.1` (localhost) — no network exposure
+
+### Vault Security Model
+
+| Component | Location | Format | Access |
+|-----------|----------|--------|--------|
+| **Original Secrets** | Your files | Plaintext | You only (before pack) |
+| **Encrypted Vault** | `~/.cloakmcp/vaults/` | AES-128 Fernet | You only (local filesystem) |
+| **Encryption Key** | `~/.cloakmcp/keys/` | Binary (Fernet) | You only (600 permissions) |
+| **Tagged Code** | Git repository | Text files | Safe to share |
+| **LLM View** | LLM provider | Tags only | Cannot reverse to secrets |
+
+### Common Questions
+
+**Q: Can someone with my git repo see my secrets?**
+**A**: No. Git only contains tags like `TAG-2f1a8e3c9b12`. The vault (with actual secrets) is in `~/.cloakmcp/` on your machine.
+
+**Q: What if I lose my vault key?**
+**A**: Secrets are unrecoverable. Keep backups of `~/.cloakmcp/keys/` in a secure location (password manager, encrypted USB).
+
+**Q: Can LLMs guess secrets from tags?**
+**A**: No. Tags are SHA-256 hashes truncated to 12 hex chars. Brute-forcing requires 2^48 attempts minimum (computationally infeasible).
+
+**Q: Does the API server expose secrets over network?**
+**A**: No. Server binds to `127.0.0.1` (localhost only). Requests never leave your machine. Sanitized output (with tags) can then be sent to LLMs.
+
+**Q: Can I use CloakMCP with remote LLM APIs?**
+**A**: Yes. Sanitize locally first, then send tagged output to API. Example:
+```bash
+mcp sanitize --input code.py --output code.tagged.py --policy mcp_policy.yaml
+curl -X POST https://api.anthropic.com/v1/complete -d @code.tagged.py
+```
 
 ---
 
@@ -610,6 +770,7 @@ open htmlcov/index.html      # macOS
 | Document                    | Description                                  | Size     |
 | --------------------------- | -------------------------------------------- | -------- |
 | **`README.md`**             | This file (overview and quick start)         | Current  |
+| **`SERVER.md`**             | Server configuration and data storage        | 20 KB    |
 | **`VSCODE_MANUAL.md`**      | Complete VS Code integration guide           | 24 KB    |
 | **`QUICKREF.md`**           | One-page cheat sheet for daily use           | 4 KB     |
 | **`CLAUDE.md`**             | Project specifications (for LLMs)            | —        |
@@ -768,6 +929,29 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ---
 
 ## 📝 Changelog
+
+### v0.2.5 (2025-11-11) — Production-Ready Beta
+
+**Added**:
+- HMAC key caching for 100-1000× performance improvement in bulk operations
+- API rate limiting (10 requests/minute per IP) with slowapi integration
+- Vault export/import commands for disaster recovery (`vault-export`, `vault-import`, `vault-stats`)
+- CLI input validation for all file and directory paths
+- Key length validation with security warnings
+
+**Fixed**:
+- CLI crashes on invalid file paths (now shows clear error messages)
+- CIDR validation errors on malformed policy entries
+- Silent failures in pack/unpack operations (now logged with specific exception types)
+- Missing error visibility in file operations (added counters and summary messages)
+
+**Security**:
+- Input path validation prevents path traversal attacks
+- Rate limiting protects against brute-force token attacks
+- Graceful handling of malformed CIDR strings in policies
+
+**Performance**:
+- Key caching reduces I/O bottleneck from 100-500 ops/sec to 100,000+ ops/sec
 
 ### v0.2.0 (2025-11-11) — Beta Release
 

@@ -75,21 +75,10 @@ class Policy:
     def cidr_allowed(self, ip: str, cidrs: Optional[List[str]]) -> bool:
         if not cidrs:
             return False
-        try:
-            ip_obj = ipaddress.ip_address(ip)
-        except ValueError:
-            # Invalid IP address
-            return False
-
+        ip_obj = ipaddress.ip_address(ip)
         for c in cidrs:
-            try:
-                if ip_obj in ipaddress.ip_network(c, strict=False):
-                    return True
-            except ValueError:
-                # Invalid CIDR notation, skip this entry
-                import sys
-                print(f"Warning: Invalid CIDR notation in policy: {c}", file=sys.stderr)
-                continue
+            if ip_obj in ipaddress.ip_network(c, strict=False):
+                return True
         return False
 
     def email_whitelisted(self, email: str) -> bool:

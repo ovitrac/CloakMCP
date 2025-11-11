@@ -1,4 +1,4 @@
-# CloakMCP v0.2.0 — Pre-Deployment Review Summary
+# CloakMCP v0.2.5 — Pre-Deployment Review Summary
 
 **Date**: 2025-11-11
 **Project**: CloakMCP — Micro-Cleanse Preprocessor
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-✅ **CloakMCP is ready for deployment** as beta v0.2.0.
+✅ **CloakMCP is ready for deployment** as beta v0.2.5.
 
 A comprehensive deep review has been completed, including:
 
@@ -346,7 +346,7 @@ code ISSUES_REPORT.md
 - [ ] Add vault export/backup command
 - [ ] Implement API rate limiting
 - [ ] Add operational logging (--verbose flag)
-- [ ] Write CHANGELOG.md for v0.2.0
+- [ ] Write CHANGELOG.md for v0.2.5
 - [ ] Create GitHub release with artifacts
 - [ ] Add CI/CD pipeline (GitHub Actions)
 - [ ] Generate coverage report badge
@@ -384,7 +384,7 @@ code ISSUES_REPORT.md
    ```bash
    # Add pack/unpack examples
    # Update quickstart with vault workflow
-   # Add badge: "Beta v0.2.0"
+   # Add badge: "Beta v0.2.5"
    ```
 
 2. **Add input validation to CLI**:
@@ -425,7 +425,7 @@ code ISSUES_REPORT.md
 
 **Questions to consider**:
 
-1. **Deployment timeline**: When do you plan to release v0.2.0 beta?
+1. **Deployment timeline**: When do you plan to release v0.2.5 beta?
 2. **Test coverage**: Should we aim for 95% or 90% coverage for v1.0?
 3. **CI/CD**: Do you want GitHub Actions or GitLab CI?
 4. **Docker**: Should we create a Dockerfile for containerized use?
@@ -434,7 +434,7 @@ code ISSUES_REPORT.md
 **Suggestions**:
 
 1. **Create release notes** — Document changes since v0.1
-2. **Tag release** — `git tag -a v0.2.0 -m "Beta release with pack/unpack"`
+2. **Tag release** — `git tag -a v0.2.5 -m "Beta release with pack/unpack"`
 3. **Generate checksums** — For distribution integrity verification
 4. **Write blog post** — Announce release and use cases
 
@@ -442,7 +442,7 @@ code ISSUES_REPORT.md
 
 ## Conclusion
 
-CloakMCP v0.2.0 is **production-ready for beta release** with minor polish recommended.
+CloakMCP v0.2.5 is **production-ready for beta release** with minor polish recommended.
 
 **Strengths**:
 - ✅ Solid architecture and security design
@@ -457,7 +457,7 @@ CloakMCP v0.2.0 is **production-ready for beta release** with minor polish recom
 - Vault backup/export command
 - Updated README with full workflow
 
-**Recommendation**: Deploy as **v0.2.0-beta**, gather user feedback, then release v1.0 with improvements.
+**Recommendation**: Deploy as **v0.2.5-beta**, gather user feedback, then release v1.0 with improvements.
 
 ---
 
@@ -477,6 +477,6 @@ CloakMCP v0.2.0 is **production-ready for beta release** with minor polish recom
 
 **Prepared by**: Claude (Sonnet 4.5) for Olivier Vitrac
 **Date**: 2025-11-11
-**Project**: CloakMCP v0.2.0 — Adservio Innovation Lab
+**Project**: CloakMCP v0.2.5 — Adservio Innovation Lab
 
 *All files backed up in `.backups/20251111_165618/`*

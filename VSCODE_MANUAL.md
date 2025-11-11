@@ -930,4 +930,4 @@ CloakMCP provides **local-first, deterministic secret protection** for VS Code w
 ---
 
 *Manual prepared for Olivier Vitrac — Adservio Innovation Lab*
-*CloakMCP v0.2.0 — MIT License*
+*CloakMCP v0.2.5 — MIT License*
