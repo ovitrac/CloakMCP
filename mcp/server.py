@@ -49,7 +49,7 @@ class StatusResponse(BaseModel):
 app = FastAPI(
     title="MCP (Micro-Cleanse Preprocessor) — Local API",
     description="Local-only secret removal proxy. Bind to 127.0.0.1 by default. DO NOT expose publicly.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 def policy_hash(path: str) -> str:

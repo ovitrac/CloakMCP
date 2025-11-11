@@ -1,3 +1,4 @@
+\
 version: 1
 globals:
   default_action: redact
