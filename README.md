@@ -8,13 +8,41 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.2.5--beta-green.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 [Features](#-features) • [Security](#-security-architecture) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
+
+---
+
+## ⚡ 2-Minute Quick Start
+
+**Try CloakMCP in under 2 minutes:**
+
+```bash
+# 1. Install (30 seconds)
+git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# 2. Setup (30 seconds)
+mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
+
+# 3. Test (1 minute)
+# Create a test file with a fake secret
+echo "API_KEY=sk_live_abc123xyz456" > test.py
+
+# Sanitize it
+mcp sanitize --policy examples/mcp_policy.yaml --input test.py --output -
+
+# Output: API_KEY=<REDACTED:generic_secret>
+# ✅ Secret removed! Original stays safe in your file.
+```
+
+**Next**: See [Quick Start](#-quick-start) for full workflows with pack/unpack.
 
 ---
 
@@ -40,6 +68,32 @@
 - ✅ Anonymize customer data in demos/screenshots
 - ✅ CI/CD pipelines with encrypted secret management
 
+### Comparison with Existing Tools
+
+| Feature | CloakMCP | ggshield/gitleaks | SOPS | DIY Scripts |
+|---------|----------|-------------------|------|-------------|
+| **Detect secrets** | ✅ | ✅ | ❌ | ✅ |
+| **Reversible redaction** | ✅ | ❌ | ❌ | ❌ |
+| **LLM-optimized workflow** | ✅ | ❌ | ❌ | ❌ |
+| **Deterministic tags** | ✅ (HMAC-based) | ❌ | ❌ | Varies |
+| **Local-only vault** | ✅ | ❌ | ❌ (cloud KMS) | Varies |
+| **Directory pack/unpack** | ✅ | ❌ | ❌ | ❌ |
+| **Encrypted storage** | ✅ (AES-128 Fernet) | ❌ | ✅ (cloud KMS) | Varies |
+| **IDE integration** | ✅ (VS Code) | ✅ | ❌ | ❌ |
+
+**When to use CloakMCP**:
+- ✅ You're sharing code with LLMs (Claude, Codex, Copilot) and need to restore secrets later
+- ✅ You need **reversible** secret redaction for development workflows
+- ✅ You want **local-only** secret storage (no cloud dependencies)
+
+**When to use ggshield/gitleaks**:
+- ✅ You only need detection/blocking (no restoration required)
+- ✅ You want pre-commit hooks with extensive pattern databases
+
+**When to use SOPS**:
+- ✅ You need cloud KMS integration for infrastructure secrets
+- ✅ You're managing secrets in production environments (Kubernetes, AWS)
+
 ---
 
 ## 🎯 Features
@@ -53,7 +107,7 @@
 | **Pack/Unpack**              | Batch-process entire directories with encrypted vault storage|
 | **Policy Engine**            | YAML-based rules for detection and actions                   |
 | **Encrypted Vaults**         | AES-128 (Fernet) encryption for reversible secret storage    |
-| **Deterministic Tags**       | Same secret → same tag (stable across sessions)              |
+| **Deterministic Tags**       | HMAC-based tags: same secret → same tag (cryptographically secure) |
 | **VS Code Integration**      | Keyboard shortcuts and tasks for seamless workflow           |
 | **Local API Server**         | Optional FastAPI server for IDE extensions                   |
 | **Audit Logging**            | JSONL logs with timestamps, rule IDs, and value hashes       |
@@ -120,7 +174,7 @@ graph TB
 - 🔑 **Keys location**: `~/.cloakmcp/keys/<project-slug>.key`
 - 📦 **Encryption**: AES-128 (Fernet) symmetric encryption
 - 🚫 **Never committed**: Vaults and keys stay outside git repository
-- 🏷️ **Tags in code**: Deterministic identifiers like `TAG-2f1a8e3c9b12`
+- 🏷️ **Tags in code**: HMAC-based deterministic identifiers like `TAG-2f1a8e3c9b12` (keyed with vault key)
 
 #### Why LLMs Cannot Access Secrets
 
@@ -148,9 +202,10 @@ sequenceDiagram
 
 **Security Properties**:
 1. **Vault is local-only** — Never uploaded to git, cloud, or LLM
-2. **Tags are one-way** — Cannot reverse `TAG-2f1a8e3c9b12` → original secret without vault
-3. **Encryption protects vault** — Even if vault file leaks, attacker needs encryption key
-4. **Keys are separate** — Vault + key both required for decryption
+2. **HMAC-based tags** — Tags use HMAC-SHA256 with vault key; cannot reverse `TAG-2f1a8e3c9b12` → original secret without vault key
+3. **Brute-force resistant** — Even with tag and candidate secret, attacker needs vault key to verify guesses
+4. **Encryption protects vault** — Even if vault file leaks, attacker needs encryption key
+5. **Keys are separate** — Vault + key both required for decryption
 
 ### Data Flow Comparison
 
@@ -228,7 +283,7 @@ graph TB
 **A**: Secrets are unrecoverable. Keep backups of `~/.cloakmcp/keys/` in a secure location (password manager, encrypted USB).
 
 **Q: Can LLMs guess secrets from tags?**
-**A**: No. Tags are SHA-256 hashes truncated to 12 hex chars. Brute-forcing requires 2^48 attempts minimum (computationally infeasible).
+**A**: No. Tags are HMAC-SHA256 signatures (keyed with your vault key) truncated to 12 hex chars. Without access to your `~/.cloakmcp/keys/` directory, reversing tags is cryptographically infeasible. Even with the tag, an attacker would need your vault key to verify guesses.
 
 **Q: Does the API server expose secrets over network?**
 **A**: No. Server binds to `127.0.0.1` (localhost only). Requests never leave your machine. Sanitized output (with tags) can then be sent to LLMs.
@@ -930,7 +985,28 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## 📝 Changelog
 
-### v0.2.5 (2025-11-11) — Production-Ready Beta
+### v0.3.0 (2025-11-11) — Security Hardening Release
+
+**BREAKING CHANGES**:
+- Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256. **Existing vaults are incompatible** with v0.3.0. Backup your vaults before upgrading.
+
+**Security** (Critical):
+- **HMAC-based tags**: Vault tags now use HMAC-SHA256 with vault key, preventing brute-force attacks on structured secrets
+- Comprehensive SERVER.md documentation with threat model and security architecture
+- Explicit warnings for server network exposure
+- Updated security claims in README with accurate cryptographic guarantees
+
+**Documentation**:
+- Added SERVER.md (20 KB) with complete server configuration guide
+- Added 5 Mermaid diagrams showing data flow and security architecture
+- Clarified where secrets are stored and why LLMs cannot access them
+- Added comparison table with existing tools (ggshield, SOPS, etc.)
+
+**Changed**:
+- Version badge changed from "beta" to "alpha" to reflect ongoing security review
+- Improved security messaging throughout documentation
+
+### v0.2.5 (2025-11-11) — Performance & Features
 
 **Added**:
 - HMAC key caching for 100-1000× performance improvement in bulk operations

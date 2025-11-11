@@ -1,5 +1,5 @@
 """
-Comprehensive test suite for CloakMCP v0.2.5
+Comprehensive test suite for CloakMCP v0.3.0
 
 Tests all major functionality:
 - Policy loading and validation

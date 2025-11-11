@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import os
 import hashlib
+import hmac
 from typing import Dict, Optional
 from cryptography.fernet import Fernet
 
@@ -46,7 +47,8 @@ class Vault:
         self.vault_path = _vault_path(self.slug)
         if not os.path.exists(self.key_path):
             _gen_keyfile(self.key_path)
-        self.fernet = Fernet(_load_key(self.key_path))
+        self._vault_key = _load_key(self.key_path)
+        self.fernet = Fernet(self._vault_key)
         self._data: Dict[str, str] = {}
         if os.path.exists(self.vault_path):
             self._data = self._read()
@@ -70,7 +72,24 @@ class Vault:
             pass
 
     def tag_for(self, secret: str, prefix: str) -> str:
-        h = hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
+        """Generate HMAC-based deterministic tag for a secret.
+
+        Uses HMAC-SHA256 with the vault key to ensure tags cannot be
+        brute-forced without access to the vault environment.
+
+        Args:
+            secret: The secret value to tag
+            prefix: Tag prefix (e.g., "TAG", "SEC")
+
+        Returns:
+            Deterministic tag like "TAG-2f1a8e3c9b12"
+        """
+        # HMAC-SHA256 with vault key (prevents brute-force attacks)
+        h = hmac.new(
+            self._vault_key,
+            secret.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()[:12]
         tag = f"{prefix}-{h}"
         if tag not in self._data:
             self._data[tag] = secret
