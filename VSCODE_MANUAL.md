@@ -68,13 +68,13 @@ pip install -e .
 Verify installation:
 
 ```bash
-mcp --help
+cloak --help
 ```
 
 Expected output:
 
 ```
-usage: mcp [-h] {scan,sanitize,pack,unpack} ...
+usage: cloak [-h] {scan,sanitize,pack,unpack} ...
 
 Micro-Cleanse Preprocessor (local secret-removal)
 ...
@@ -177,7 +177,7 @@ CloakMCP integrates with VS Code through:
 │            ▼                                 │
 │  ┌─────────────────────────────────────┐    │
 │  │  Task: "MCP Sanitize"               │    │
-│  │  → mcp sanitize --input file.py     │    │
+│  │  → cloak sanitize --input file.py     │    │
 │  └─────────────────────────────────────┘    │
 │            │                                 │
 │            ▼                                 │
@@ -221,7 +221,7 @@ CloakMCP integrates with VS Code through:
 4. Review output
 5. If satisfied, manually run:
    ```bash
-   mcp sanitize --policy examples/mcp_policy.yaml --input yourfile.py --output yourfile.py
+   cloak sanitize --policy examples/mcp_policy.yaml --input yourfile.py --output yourfile.py
    ```
 
 ### Scenario 4: Pack Entire Project Before Sharing
@@ -231,7 +231,7 @@ Before uploading to GitHub or sharing with an LLM:
 1. Open terminal in VS Code (`` Ctrl+` ``)
 2. Run:
    ```bash
-   mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+   cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
    ```
 3. All secrets replaced with `TAG-xxxxxxxxxxxx` tags
 4. Vault created in `~/.cloakmcp/vaults/`
@@ -239,7 +239,7 @@ Before uploading to GitHub or sharing with an LLM:
 **After work is done**:
 
 ```bash
-mcp unpack --dir .
+cloak unpack --dir .
 ```
 
 Secrets are restored from vault.
@@ -255,7 +255,7 @@ Secrets are restored from vault.
 **Command**:
 
 ```bash
-mcp sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -
+cloak sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -
 ```
 
 **Behavior**:
@@ -294,7 +294,7 @@ DB_PASS = "PZ-Gh9Ij1Kl3"
 **Command**:
 
 ```bash
-mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}
+cloak scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}
 ```
 
 **Behavior**:
@@ -337,7 +337,7 @@ mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}
 #### Pack (Anonymize Project)
 
 ```bash
-mcp pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
 ```
 
 **What it does**:
@@ -367,7 +367,7 @@ EMAIL = "TAG-3a2b1c0d9e8f"
 #### Unpack (Restore Secrets)
 
 ```bash
-mcp unpack --dir /path/to/project
+cloak unpack --dir /path/to/project
 ```
 
 **What it does**:
@@ -425,7 +425,7 @@ CloakMCP defines three tasks in `.vscode/tasks.json`:
 {
   "label": "MCP: Sanitize current file → preview",
   "type": "shell",
-  "command": "mcp sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
+  "command": "cloak sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
   "presentation": { "reveal": "always", "panel": "shared" }
 }
 ```
@@ -442,7 +442,7 @@ CloakMCP defines three tasks in `.vscode/tasks.json`:
 {
   "label": "MCP: Scan current file (audit only)",
   "type": "shell",
-  "command": "mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
+  "command": "cloak scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
   "presentation": { "reveal": "never", "panel": "shared" }
 }
 ```
@@ -461,7 +461,7 @@ CloakMCP defines three tasks in `.vscode/tasks.json`:
 ```
 
 **Requirements**:
-- API server running (`uvicorn mcp.server:app --host 127.0.0.1 --port 8765`)
+- API server running (`uvicorn cloak.server:app --host 127.0.0.1 --port 8765`)
 - Valid API token in `keys/mcp_api_token`
 
 **Note**: This task reads from stdin (for selected text), but VS Code tasks don't support selection input by default. Use the Command Palette to run manually.
@@ -479,7 +479,7 @@ CloakMCP includes an optional **local-only FastAPI server** for real-time saniti
 openssl rand -hex 32 > keys/mcp_api_token
 
 # Start server (bind to localhost only)
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 ```
 
 **Output**:
@@ -574,7 +574,7 @@ print(response.read().decode())
 
 1. **Pack the project**:
    ```bash
-   mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+   cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
    ```
 
 2. **Verify secrets removed**:
@@ -589,7 +589,7 @@ print(response.read().decode())
 
 5. **Unpack to restore secrets**:
    ```bash
-   mcp unpack --dir .
+   cloak unpack --dir .
    ```
 
 6. **Verify restoration**:
@@ -612,9 +612,9 @@ echo "🔒 CloakMCP: Scanning for secrets..."
 # Scan all staged files
 for file in $(git diff --cached --name-only --diff-filter=ACM); do
   if [ -f "$file" ]; then
-    mcp scan --policy examples/mcp_policy.yaml --input "$file" || {
+    cloak scan --policy examples/mcp_policy.yaml --input "$file" || {
       echo "❌ Secrets detected in $file. Commit blocked."
-      echo "   Run: mcp sanitize --policy examples/mcp_policy.yaml --input $file --output $file"
+      echo "   Run: cloak sanitize --policy examples/mcp_policy.yaml --input $file --output $file"
       exit 1
     }
   fi
@@ -662,7 +662,7 @@ jobs:
 
       - name: Pack secrets
         run: |
-          mcp pack --policy examples/mcp_policy.yaml --dir . --prefix CI_TAG
+          cloak pack --policy examples/mcp_policy.yaml --dir . --prefix CI_TAG
 
       - name: Run tests
         run: pytest
@@ -676,7 +676,7 @@ jobs:
 
 ## Troubleshooting
 
-### Problem: "mcp: command not found"
+### Problem: "cloak: command not found"
 
 **Cause**: CloakMCP not installed or virtual environment not activated.
 
@@ -685,7 +685,7 @@ jobs:
 ```bash
 source .venv/bin/activate  # Activate venv
 pip install -e .           # Reinstall if needed
-which mcp                  # Should show path in .venv/
+which cloak                  # Should show path in .venv/
 ```
 
 ### Problem: "Missing API token file"
@@ -720,13 +720,13 @@ openssl rand -hex 32 > keys/mcp_api_token
 
 ```bash
 cd /path/to/CloakMCP  # Ensure you're in project root
-mcp sanitize --policy $(pwd)/examples/mcp_policy.yaml --input file.py --output -
+cloak sanitize --policy $(pwd)/examples/mcp_policy.yaml --input file.py --output -
 ```
 
 Or use absolute path:
 
 ```bash
-mcp sanitize --policy /full/path/to/CloakMCP/examples/mcp_policy.yaml --input file.py --output -
+cloak sanitize --policy /full/path/to/CloakMCP/examples/mcp_policy.yaml --input file.py --output -
 ```
 
 ### Problem: Secrets not detected
@@ -765,7 +765,7 @@ detection:
    ```bash
    rm ~/.cloakmcp/vaults/<slug>.vault
    rm ~/.cloakmcp/keys/<slug>.key
-   mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+   cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
    ```
 
 ---
@@ -785,7 +785,7 @@ Edit `.vscode/tasks.json` to use `.mcp_policy.yaml`:
 ```json
 {
   "label": "MCP: Sanitize current file → preview",
-  "command": "mcp sanitize --policy ${workspaceFolder}/.mcp_policy.yaml --input ${file} --output -"
+  "command": "cloak sanitize --policy ${workspaceFolder}/.mcp_policy.yaml --input ${file} --output -"
 }
 ```
 
@@ -797,13 +797,13 @@ Edit `.vscode/tasks.json` and add:
 {
   "label": "MCP: Pack project (anonymize)",
   "type": "shell",
-  "command": "mcp pack --policy ${workspaceFolder}/examples/mcp_policy.yaml --dir ${workspaceFolder} --prefix TAG",
+  "command": "cloak pack --policy ${workspaceFolder}/examples/mcp_policy.yaml --dir ${workspaceFolder} --prefix TAG",
   "problemMatcher": []
 },
 {
   "label": "MCP: Unpack project (restore secrets)",
   "type": "shell",
-  "command": "mcp unpack --dir ${workspaceFolder}",
+  "command": "cloak unpack --dir ${workspaceFolder}",
   "problemMatcher": []
 }
 ```
@@ -827,7 +827,7 @@ Mark sanitized commits in GitLens:
 
 3. Before pushing:
    ```bash
-   mcp unpack --dir .
+   cloak unpack --dir .
    git commit --amend --no-edit  # Update commit with real secrets (if needed)
    ```
 
@@ -890,7 +890,7 @@ keys/
 ## FAQ
 
 **Q: Can I use CloakMCP with other IDEs (PyCharm, Sublime)?**
-A: Yes! CloakMCP is CLI-based. Configure external tools in your IDE to call `mcp` commands.
+A: Yes! CloakMCP is CLI-based. Configure external tools in your IDE to call `cloak` commands.
 
 **Q: Does packing preserve file encoding?**
 A: Yes, UTF-8 is used. Non-UTF-8 files may be skipped (logged in future versions).
@@ -930,4 +930,4 @@ CloakMCP provides **local-first, deterministic secret protection** for VS Code w
 ---
 
 *Manual prepared for Olivier Vitrac — Adservio Innovation Lab*
-*CloakMCP v0.3.0 — MIT License*
+*CloakMCP v0.3.1 — MIT License*

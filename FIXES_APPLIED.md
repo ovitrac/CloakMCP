@@ -176,7 +176,7 @@ def _load_hmac_key(key_path: str) -> bytes:
 
 #### 1. `vault-export` — Export vault to encrypted backup
 ```bash
-mcp vault-export --dir /path/to/project --output backup.vault
+cloak vault-export --dir /path/to/project --output backup.vault
 ```
 
 **Output**:
@@ -189,7 +189,7 @@ Vault exported to backup.vault
 
 #### 2. `vault-import` — Import vault from encrypted backup
 ```bash
-mcp vault-import --dir /path/to/project --input backup.vault
+cloak vault-import --dir /path/to/project --input backup.vault
 ```
 
 **Output**:
@@ -201,7 +201,7 @@ Vault imported from backup.vault
 
 #### 3. `vault-stats` — Display vault statistics
 ```bash
-mcp vault-stats --dir /path/to/project
+cloak vault-stats --dir /path/to/project
 ```
 
 **Output**:
@@ -267,14 +267,14 @@ tests/test_smoke.py::test_sanitize PASSED                                [100%]
 
 #### Test 1: Invalid Path Handling
 ```bash
-$ mcp scan --policy nonexistent.yaml --input test.py
+$ cloak scan --policy nonexistent.yaml --input test.py
 Error: policy file does not exist: nonexistent.yaml
 ```
 ✅ **Pass**: Clear error message
 
 #### Test 2: Pack with Error Reporting
 ```bash
-$ mcp pack --policy examples/mcp_policy.yaml --dir test_project
+$ cloak pack --policy examples/mcp_policy.yaml --dir test_project
 Warning: Skipping file (encoding error): test_project/binary.dat - ...
 Pack complete: 5 files modified, 1 files skipped
 ```
@@ -282,11 +282,11 @@ Pack complete: 5 files modified, 1 files skipped
 
 #### Test 3: Vault Export/Import
 ```bash
-$ mcp vault-export --dir . --output backup.vault
+$ cloak vault-export --dir . --output backup.vault
 Vault exported to backup.vault
   Total secrets: 12
 
-$ mcp vault-import --dir . --input backup.vault
+$ cloak vault-import --dir . --input backup.vault
 Vault imported from backup.vault
   Total secrets: 12
 ```
@@ -294,7 +294,7 @@ Vault imported from backup.vault
 
 #### Test 4: Vault Stats
 ```bash
-$ mcp vault-stats --dir .
+$ cloak vault-stats --dir .
 Vault statistics for: .
   Project slug: 9f8e7d6c5b4a3210
   Total secrets: 12

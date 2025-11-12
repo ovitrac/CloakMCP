@@ -1,6 +1,6 @@
 # CloakMCP Server Documentation
 
-**Version**: 0.3.0
+**Version**: 0.3.1
 **Date**: 2025-11-11
 **Maintainer**: Olivier Vitrac — Adservio Innovation Lab
 
@@ -95,7 +95,7 @@ CloakMCP can operate in two modes:
 - **Encryption**: AES-128 via Python's `cryptography.Fernet`
 - **Permissions**: `chmod 600` (owner read/write only)
 - **Storage format**: Encrypted JSON
-- **Backup**: Use `mcp vault-export` to create encrypted backups
+- **Backup**: Use `cloak vault-export` to create encrypted backups
 
 **Example**:
 ```bash
@@ -159,10 +159,10 @@ chmod 600 keys/mcp_hmac_key
 **Usage**: Direct command execution, no network involved
 
 ```bash
-mcp scan --policy examples/mcp_policy.yaml --input file.py
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output -
-mcp pack --policy examples/mcp_policy.yaml --dir /path/to/project
-mcp unpack --dir /path/to/project
+cloak scan --policy examples/mcp_policy.yaml --input file.py
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output -
+cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project
+cloak unpack --dir /path/to/project
 ```
 
 **Data flow**:
@@ -188,14 +188,14 @@ openssl rand -hex 32 > keys/mcp_api_token
 chmod 600 keys/mcp_api_token
 
 # Start server (localhost only - DEFAULT - RECOMMENDED)
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 
 # ⚠️  SECURITY WARNING: LAN/network access
 # Only use --host 0.0.0.0 on fully trusted networks with proper firewall rules
 # Exposing this server publicly transmits secrets over the network and defeats
 # the entire security model of CloakMCP. Use TLS, authentication, and VPN.
 # YOU HAVE BEEN WARNED.
-uvicorn mcp.server:app --host 0.0.0.0 --port 8765  # NOT RECOMMENDED
+uvicorn cloak.server:app --host 0.0.0.0 --port 8765  # NOT RECOMMENDED
 ```
 
 #### Server Features
@@ -243,7 +243,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=/path/to/CloakMCP
-ExecStart=/usr/bin/env uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+ExecStart=/usr/bin/env uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 Restart=on-failure
 Environment=MCP_POLICY=examples/mcp_policy.yaml
 
@@ -254,8 +254,8 @@ WantedBy=default.target
 **Enable**:
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now mcp-local.service
-systemctl --user status mcp-local.service
+systemctl --user enable --now cloak-local.service
+systemctl --user status cloak-local.service
 ```
 
 ---
@@ -294,10 +294,10 @@ systemctl --user status mcp-local.service
 
 #### ✅ Safe Workflow
 ```
-1. mcp pack --dir /project         # Secrets → tags, vault updated
+1. cloak pack --dir /project         # Secrets → tags, vault updated
 2. git commit -am "Add feature"    # Only tags committed
 3. Share code with LLM             # LLM sees tags, not secrets
-4. mcp unpack --dir /project       # Tags → secrets restored locally
+4. cloak unpack --dir /project       # Tags → secrets restored locally
 ```
 
 ---
@@ -390,7 +390,7 @@ openssl rand -hex 32 > keys/mcp_hmac_key
 openssl rand -hex 32 > keys/mcp_api_token
 
 # 3. Start server
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765 --reload
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765 --reload
 ```
 
 ### Production (Local Network)
@@ -420,7 +420,7 @@ openssl rand -hex 64 > keys/mcp_api_token
 sudo ufw allow from 192.168.1.0/24 to any port 8765
 
 # 4. Start with host binding
-uvicorn mcp.server:app --host 0.0.0.0 --port 8765 --workers 2
+uvicorn cloak.server:app --host 0.0.0.0 --port 8765 --workers 2
 
 # 5. Use systemd for persistence (see Configuration section)
 ```
@@ -451,7 +451,7 @@ RUN pip install -e .
 # Mount volumes for persistent data
 VOLUME ["/root/.cloakmcp", "/app/keys", "/app/audit"]
 
-CMD ["uvicorn", "mcp.server:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["uvicorn", "cloak.server:app", "--host", "0.0.0.0", "--port", "8765"]
 ```
 
 ```bash
@@ -499,7 +499,7 @@ cat audit/audit.jsonl | jq 'select(.blocked == true)'
 
 ```bash
 # Check vault contents (encrypted, safe to inspect)
-mcp vault-stats --dir /path/to/project
+cloak vault-stats --dir /path/to/project
 
 # Output:
 # Vault statistics for: /path/to/project
@@ -526,7 +526,7 @@ lsof -i :8765
 kill <PID>
 
 # Or use different port
-uvicorn mcp.server:app --host 127.0.0.1 --port 8766
+uvicorn cloak.server:app --host 127.0.0.1 --port 8766
 ```
 
 #### 2. Authentication fails
@@ -539,8 +539,8 @@ uvicorn mcp.server:app --host 127.0.0.1 --port 8766
 openssl rand -hex 32 > keys/mcp_api_token
 
 # Restart server
-pkill -f "uvicorn mcp.server"
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+pkill -f "uvicorn cloak.server"
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 ```
 
 #### 3. Rate limit errors
@@ -566,7 +566,7 @@ cp .backups/latest/keys/<slug>.key ~/.cloakmcp/keys/
 # Or regenerate (WARNING: loses all vaulted secrets):
 rm ~/.cloakmcp/vaults/<slug>.vault
 rm ~/.cloakmcp/keys/<slug>.key
-mcp pack --policy examples/mcp_policy.yaml --dir /project
+cloak pack --policy examples/mcp_policy.yaml --dir /project
 ```
 
 #### 5. Missing slowapi (rate limiting)
@@ -587,7 +587,7 @@ pip install slowapi
 
 1. **Never expose server to public internet** — Use localhost or trusted LAN only
 2. **Rotate API tokens regularly** — Especially if server is LAN-accessible
-3. **Backup vaults before major operations** — Use `mcp vault-export`
+3. **Backup vaults before major operations** — Use `cloak vault-export`
 4. **Monitor audit logs** — Set up alerts for blocked operations
 5. **Use strong HMAC keys** — Minimum 32 bytes (256 bits)
 
@@ -602,8 +602,8 @@ pip install slowapi
 
 1. **Version control policy files** — Track changes to detection rules
 2. **Document custom rules** — Add comments in YAML policy
-3. **Test policies before deployment** — Use `mcp scan --dry-run`
-4. **Automate backups** — Schedule `mcp vault-export` via cron
+3. **Test policies before deployment** — Use `cloak scan --dry-run`
+4. **Automate backups** — Schedule `cloak vault-export` via cron
 
 ---
 
@@ -620,9 +620,9 @@ pip install slowapi
 ### Q: Can I share vaults with teammates?
 
 **A**: Yes, but securely:
-1. Export vault: `mcp vault-export --dir /project --output backup.vault`
+1. Export vault: `cloak vault-export --dir /project --output backup.vault`
 2. Transfer encrypted file via secure channel (already encrypted)
-3. Import on teammate's machine: `mcp vault-import --dir /project --input backup.vault`
+3. Import on teammate's machine: `cloak vault-import --dir /project --input backup.vault`
 
 ### Q: What happens if I lose the vault key?
 
@@ -638,7 +638,7 @@ pip install slowapi
 
 **A**: Only to audit logs (with hashes, not plaintext). Uvicorn access logs can be disabled:
 ```bash
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765 --log-level warning
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765 --log-level warning
 ```
 
 ---
@@ -656,4 +656,4 @@ uvicorn mcp.server:app --host 127.0.0.1 --port 8765 --log-level warning
 **Prepared by**: Olivier Vitrac — Adservio Innovation Lab
 **Date**: 2025-11-11
 **License**: MIT
-**Project**: CloakMCP v0.3.0
+**Project**: CloakMCP v0.3.1

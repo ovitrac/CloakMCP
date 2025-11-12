@@ -35,7 +35,7 @@ The system guarantees that an external LLM **never sees the true secrets** and t
 ## 3. How Claude (or any LLM) should operate
 
 1. **Receive only packed data.**
-   When a repository is processed with `mcp pack`, all sensitive information is replaced by opaque tags.
+   When a repository is processed with `cloak pack`, all sensitive information is replaced by opaque tags.
    LLMs can view, analyze, and modify these files freely.
 
 2. **Never access or modify the vault.**
@@ -48,7 +48,7 @@ The system guarantees that an external LLM **never sees the true secrets** and t
 4. **Post-processing.**
    When user work is done (e.g., code review, refactor, or generation), the user runs:
 ```bash
-   mcp unpack --dir /path/to/project
+   cloak unpack --dir /path/to/project
 ```
 
 This restores all secrets safely using the encrypted local vault.
@@ -59,11 +59,11 @@ This restores all secrets safely using the encrypted local vault.
 
 | Command                                               | Description                                              |
 | ----------------------------------------------------- | -------------------------------------------------------- |
-| `mcp scan --policy POL --input FILE`                  | Scan file, log detections (no modification).             |
-| `mcp sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot).                       |
-| `mcp pack --policy POL --dir DIR`                     | Replace secrets by deterministic tags across directory.  |
-| `mcp unpack --dir DIR`                                | Restore original secrets from local vault.               |
-| `mcp server` (via uvicorn)                            | Optional localhost REST API (`127.0.0.1:8765/sanitize`). |
+| `cloak scan --policy POL --input FILE`                  | Scan file, log detections (no modification).             |
+| `cloak sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot).                       |
+| `cloak pack --policy POL --dir DIR`                     | Replace secrets by deterministic tags across directory.  |
+| `cloak unpack --dir DIR`                                | Restore original secrets from local vault.               |
+| `cloak server` (via uvicorn)                            | Optional localhost REST API (`127.0.0.1:8765/sanitize`). |
 
 ---
 
@@ -92,13 +92,13 @@ pip install -e .
 openssl rand -hex 32 > keys/mcp_hmac_key
 
 # 2. User anonymizes repo before upload
-mcp pack --policy examples/mcp_policy.yaml --dir my_project
+cloak pack --policy examples/mcp_policy.yaml --dir my_project
 
 # 3. Claude performs code review / refactor / documentation
 #    (no access to vault, only sees TAG-xxxxxx placeholders)
 
 # 4. User restores secrets locally
-mcp unpack --dir my_project
+cloak unpack --dir my_project
 ```
 
 ---
@@ -106,8 +106,8 @@ mcp unpack --dir my_project
 ## 7. Integration Notes
 
 * **VS Code:** Keybindings (`Ctrl + Alt + S`/`A`) and tasks are pre-configured for quick sanitize/scan.
-* **API mode:** Localhost FastAPI server (`uvicorn mcp.server:app --host 127.0.0.1 --port 8765`) for on-the-fly sanitization by IDE extensions.
-* **CI/CD:** Add a pre-commit hook invoking `mcp scan` to block commits with un-sanitized secrets.
+* **API mode:** Localhost FastAPI server (`uvicorn cloak.server:app --host 127.0.0.1 --port 8765`) for on-the-fly sanitization by IDE extensions.
+* **CI/CD:** Add a pre-commit hook invoking `cloak scan` to block commits with un-sanitized secrets.
 * **`.mcpignore`:** Controls which files or directories are skipped during pack/unpack (similar to `.gitignore`).
 
 ---
@@ -356,7 +356,7 @@ CloakMCP/
 ├── audit/
 │   └── .gitkeep
 ├── deploy/
-│   └── mcp-local.service
+│   └── cloak-local.service
 ├── examples/
 │   ├── client_sanitize.py
 │   └── mcp_policy.yaml
@@ -407,9 +407,9 @@ CloakMCP/
 
 **CLI**
 
-- `mcp scan --policy ./mcp_policy.yaml --input file.md --dry-run`
-- `mcp sanitize --policy ./mcp_policy.yaml --input file.md --output file.sanitized.md`
-- `mcp watch --dir ./project --policy ./mcp_policy.yaml` (optional)
+- `cloak scan --policy ./mcp_policy.yaml --input file.md --dry-run`
+- `cloak sanitize --policy ./mcp_policy.yaml --input file.md --output file.sanitized.md`
+- `cloak watch --dir ./project --policy ./mcp_policy.yaml` (optional)
 
 **Local server (optional)**
 
@@ -492,7 +492,7 @@ CloakMCP/
   }
   ```
 
-- Allow `mcp audit --export --decrypt` for authorized local users only (if reversible mapping used).
+- Allow `cloak audit --export --decrypt` for authorized local users only (if reversible mapping used).
 
 ------
 
@@ -530,8 +530,8 @@ Keep `AUTHORS.md` listing contributors. Encourage PRs but require contributors t
 1. Clone repo.
 2. Create key: `mkdir keys && openssl rand -hex 32 > keys/mcp_hmac_key`
 3. Edit `mcp_policy.yaml` (examples provided).
-4. Dry run: `mcp scan --policy examples/mcp_policy.yaml --input notes.md --dry-run`
-5. If satisfied: `mcp sanitize --policy examples/mcp_policy.yaml --input notes.md --output notes.sanitized.md`
+4. Dry run: `cloak scan --policy examples/mcp_policy.yaml --input notes.md --dry-run`
+5. If satisfied: `cloak sanitize --policy examples/mcp_policy.yaml --input notes.md --output notes.sanitized.md`
 
 ------
 
@@ -683,7 +683,7 @@ mkdir -p keys
 openssl rand -hex 32 > keys/mcp_api_token
 
 # run (bind to localhost)
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 ```
 
 **Curl test (replace TOKEN):**
@@ -709,7 +709,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=%h/your-repo
-ExecStart=/usr/bin/env uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+ExecStart=/usr/bin/env uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 Restart=on-failure
 Environment=MCP_POLICY=examples/mcp_policy.yaml
 User=%i
@@ -724,8 +724,8 @@ Enable for your user:
 mkdir -p ~/.config/systemd/user
 cp deploy/mcp-local.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now mcp-local.service
-systemctl --user status mcp-local.service
+systemctl --user enable --now cloak-local.service
+systemctl --user status cloak-local.service
 ```
 
 ------
@@ -743,7 +743,7 @@ Create a `.vscode/` folder with the following:
     {
       "label": "MCP: Sanitize current file → preview",
       "type": "shell",
-      "command": "mcp sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
+      "command": "cloak sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
       "problemMatcher": [],
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared" }
@@ -751,7 +751,7 @@ Create a `.vscode/` folder with the following:
     {
       "label": "MCP: Scan current file (audit only)",
       "type": "shell",
-      "command": "mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
+      "command": "cloak scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
       "problemMatcher": [],
       "group": "none",
       "presentation": { "reveal": "never", "panel": "shared" }
@@ -833,7 +833,7 @@ If you **must** expose over LAN (e.g., several dev machines on a trusted subnet)
 - start with explicit host and a stronger token:
 
   ```bash
-  uvicorn mcp.server:app --host 0.0.0.0 --port 8765
+  uvicorn cloak.server:app --host 0.0.0.0 --port 8765
   ```
 
 - use a host firewall to restrict to your subnet
@@ -878,7 +878,7 @@ If you want, I can also add a **Dockerfile (local only)** and a **VS Code Comman
 
 ### Technical notes
 
-- Package name remains `mcp` for short CLI (`mcp sanitize ...`), while the repo name is **CloakMCP**.
+- Package name remains `cloak` for short CLI (`cloak sanitize ...`), while the repo name is **CloakMCP**.
 
 - To run:
 
@@ -887,14 +887,14 @@ If you want, I can also add a **Dockerfile (local only)** and a **VS Code Comman
   python -m venv .venv && . .venv/bin/activate
   pip install -e .
   mkdir -p keys audit && openssl rand -hex 32 > keys/mcp_hmac_key
-  mcp sanitize --policy examples/mcp_policy.yaml --input examples/client_sanitize.py --output -
+  cloak sanitize --policy examples/mcp_policy.yaml --input examples/client_sanitize.py --output -
   ```
 
 - Local API:
 
   ```
   openssl rand -hex 32 > keys/mcp_api_token
-  uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+  uvicorn cloak.server:app --host 127.0.0.1 --port 8765
   ```
 
 - VS Code: press `Ctrl+Alt+S` to preview sanitize current file, `Ctrl+Alt+A` to scan & audit.
@@ -950,12 +950,12 @@ pip install -e .
 mkdir -p keys audit && openssl rand -hex 32 > keys/mcp_hmac_key   # for pseudonymization
 
 # pack an entire repo (replace secrets by tags)
-mcp pack --policy examples/mcp_policy.yaml --dir /path/to/your/repo --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir /path/to/your/repo --prefix TAG
 
 # ...send packed repo to Claude/Codex, work freely...
 
 # restore secrets locally
-mcp unpack --dir /path/to/your/repo
+cloak unpack --dir /path/to/your/repo
 
 ```
 
@@ -979,11 +979,11 @@ mcp unpack --dir /path/to/your/repo
 
 | Command                                               | Description                                              |
 | ----------------------------------------------------- | -------------------------------------------------------- |
-| `mcp scan --policy POL --input FILE`                  | Scan file, log detections (no modification).             |
-| `mcp sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot).                       |
-| `mcp pack --policy POL --dir DIR`                     | Replace secrets by deterministic tags across directory.  |
-| `mcp unpack --dir DIR`                                | Restore original secrets from local vault.               |
-| `mcp server` (via uvicorn)                            | Optional localhost REST API (`127.0.0.1:8765/sanitize`). |
+| `cloak scan --policy POL --input FILE`                  | Scan file, log detections (no modification).             |
+| `cloak sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot).                       |
+| `cloak pack --policy POL --dir DIR`                     | Replace secrets by deterministic tags across directory.  |
+| `cloak unpack --dir DIR`                                | Restore original secrets from local vault.               |
+| `cloak server` (via uvicorn)                            | Optional localhost REST API (`127.0.0.1:8765/sanitize`). |
 
 ------
 
@@ -1012,13 +1012,13 @@ pip install -e .
 openssl rand -hex 32 > keys/mcp_hmac_key
 
 # 2. User anonymizes repo before upload
-mcp pack --policy examples/mcp_policy.yaml --dir my_project
+cloak pack --policy examples/mcp_policy.yaml --dir my_project
 
 # 3. Claude performs code review / refactor / documentation
 #    (no access to vault, only sees TAG-xxxxxx placeholders)
 
 # 4. User restores secrets locally
-mcp unpack --dir my_project
+cloak unpack --dir my_project
 ```
 
 ------
@@ -1026,8 +1026,8 @@ mcp unpack --dir my_project
 ## 5. Integration Notes
 
 - **VS Code:** Keybindings (`Ctrl + Alt + S`/`A`) and tasks are pre-configured for quick sanitize/scan.
-- **API mode:** Localhost FastAPI server (`uvicorn mcp.server:app --host 127.0.0.1 --port 8765`) for on-the-fly sanitization by IDE extensions.
-- **CI/CD:** Add a pre-commit hook invoking `mcp scan` to block commits with un-sanitized secrets.
+- **API mode:** Localhost FastAPI server (`uvicorn cloak.server:app --host 127.0.0.1 --port 8765`) for on-the-fly sanitization by IDE extensions.
+- **CI/CD:** Add a pre-commit hook invoking `cloak scan` to block commits with un-sanitized secrets.
 - **`.mcpignore`:** Controls which files or directories are skipped during pack/unpack (similar to `.gitignore`).
 
 ------

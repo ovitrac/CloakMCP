@@ -1,6 +1,6 @@
 # CloakMCP Test Suite
 
-Comprehensive test suite for CloakMCP v0.3.0.
+Comprehensive test suite for CloakMCP v0.3.1.
 
 ## Test Files
 
@@ -40,7 +40,7 @@ pytest -v tests/test_api.py
 ### Run with Coverage
 
 ```bash
-pytest --cov=mcp --cov-report=html --cov-report=term
+pytest --cov=cloak --cov-report=html --cov-report=term
 ```
 
 Coverage report will be generated in `htmlcov/index.html`.
@@ -153,7 +153,7 @@ jobs:
           openssl rand -hex 32 > keys/mcp_hmac_key
 
       - name: Run tests
-        run: pytest --cov=mcp --cov-report=xml
+        run: pytest --cov=cloak --cov-report=xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
@@ -167,7 +167,7 @@ jobs:
 
 ```python
 import pytest
-from mcp.your_module import your_function
+from cloak.your_module import your_function
 
 class TestYourFeature:
     def test_basic_functionality(self):
@@ -202,7 +202,7 @@ class TestYourFeature:
 
 **Solution**: Tests change directory to `temp_dir`. Ensure fixtures set up policy files correctly.
 
-### "ModuleNotFoundError: No module named 'mcp'"
+### "ModuleNotFoundError: No module named 'cloak'"
 
 **Solution**: Install package in editable mode:
 

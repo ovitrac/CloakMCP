@@ -116,20 +116,20 @@ CloakMCP is a well-architected security tool with solid foundations. The codebas
 ### F1. No Pack Dry-Run Mode
 **File**: `cli.py:90-93`
 **Severity**: LOW
-**Description**: `mcp pack` has no `--dry-run` to preview changes before modifying files.
+**Description**: `cloak pack` has no `--dry-run` to preview changes before modifying files.
 **Recommendation**: Add `--dry-run` flag that logs what would be replaced without writing.
 
 ### F2. Vault Export/Backup Missing
 **File**: `storage.py`
 **Severity**: MEDIUM
 **Description**: No CLI command to export or backup vaults for disaster recovery.
-**Recommendation**: Add `mcp vault export --dir DIR --output vault_backup.json`.
+**Recommendation**: Add `cloak vault export --dir DIR --output vault_backup.json`.
 
 ### F3. No Default `.mcpignore` Generation
 **File**: `dirpack.py`
 **Severity**: LOW
 **Description**: Users must manually create `.mcpignore`. First-time users may accidentally scan binaries.
-**Recommendation**: `mcp pack` auto-generates `.mcpignore` if missing (with user confirmation).
+**Recommendation**: `cloak pack` auto-generates `.mcpignore` if missing (with user confirmation).
 
 ### F4. README Outdated
 **File**: `README.md`

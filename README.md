@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.3.0--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.3.1--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -36,7 +36,7 @@ mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
 echo "API_KEY=sk_live_abc123xyz456" > test.py
 
 # Sanitize it
-mcp sanitize --policy examples/mcp_policy.yaml --input test.py --output -
+cloak sanitize --policy examples/mcp_policy.yaml --input test.py --output -
 
 # Output: API_KEY=<REDACTED:generic_secret>
 # ✅ Secret removed! Original stays safe in your file.
@@ -147,7 +147,7 @@ CloakMCP ensures that **secrets never leave your local machine**. Here's how:
 ```mermaid
 graph TB
     subgraph "Your Local Machine"
-        A[Original Code<br/>with Secrets] -->|mcp pack| B[Packed Code<br/>with Tags]
+        A[Original Code<br/>with Secrets] -->|cloak pack| B[Packed Code<br/>with Tags]
         B --> C[Git Repository]
         A -->|secrets extracted| D[Encrypted Vault<br/>~/.cloakmcp/vaults/]
         D -.encryption key.-> E[Encryption Key<br/>~/.cloakmcp/keys/]
@@ -159,7 +159,7 @@ graph TB
 
     subgraph "Restoration"
         F -->|modified code| G[Code with Tags]
-        G -->|mcp unpack| H[Original Code<br/>secrets restored]
+        G -->|cloak unpack| H[Original Code<br/>secrets restored]
         D -.decryption.-> H
     end
 
@@ -185,7 +185,7 @@ sequenceDiagram
     participant Vault as Encrypted Vault<br/>(~/.cloakmcp/)
     participant LLM as LLM (Claude/Codex)
 
-    Dev->>MCP: mcp pack --dir /project
+    Dev->>MCP: cloak pack --dir /project
     MCP->>MCP: Scan for secrets
     MCP->>Vault: Store secret → TAG mapping (encrypted)
     MCP->>Dev: Code with tags (TAG-xxxx)
@@ -194,7 +194,7 @@ sequenceDiagram
     Note over LLM: LLM sees: TAG-2f1a8e3c9b12<br/>NOT: sk_live_abc123xyz
 
     LLM->>Dev: Modified code (tags preserved)
-    Dev->>MCP: mcp unpack --dir /project
+    Dev->>MCP: cloak unpack --dir /project
     MCP->>Vault: Retrieve secret for TAG-xxxx
     Vault->>MCP: Decrypted secret
     MCP->>Dev: Code with original secrets
@@ -221,7 +221,7 @@ graph LR
 #### With CloakMCP ✅
 ```mermaid
 graph LR
-    A[Code with Secrets] -->|mcp pack| B[Code with Tags]
+    A[Code with Secrets] -->|cloak pack| B[Code with Tags]
     B -->|safe to send| C[LLM Provider]
     C -->|only sees tags| D[Provider Database]
     A -.secrets stay local.-> E[Encrypted Vault<br/>~/.cloakmcp/]
@@ -236,7 +236,7 @@ graph LR
 ```mermaid
 graph TB
     subgraph "Your Machine"
-        A[File with Secrets] -->|mcp sanitize| B[Policy Engine]
+        A[File with Secrets] -->|cloak sanitize| B[Policy Engine]
         B --> C[Scanner]
         C --> D[Action Engine]
         D --> E[Sanitized Output]
@@ -291,7 +291,7 @@ graph TB
 **Q: Can I use CloakMCP with remote LLM APIs?**
 **A**: Yes. Sanitize locally first, then send tagged output to API. Example:
 ```bash
-mcp sanitize --input code.py --output code.tagged.py --policy mcp_policy.yaml
+cloak sanitize --input code.py --output code.tagged.py --policy mcp_policy.yaml
 curl -X POST https://api.anthropic.com/v1/complete -d @code.tagged.py
 ```
 
@@ -314,7 +314,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 
 # Verify installation
-mcp --help
+cloak --help
 ```
 
 ### 2. Generate Keys
@@ -345,10 +345,10 @@ DB_URL = "postgresql://user:pass@db.internal.com:5432/mydb"
 EOF
 
 # Scan (detect only, no modification)
-mcp scan --policy examples/mcp_policy.yaml --input test_secrets.py
+cloak scan --policy examples/mcp_policy.yaml --input test_secrets.py
 
 # Sanitize (preview to terminal)
-mcp sanitize --policy examples/mcp_policy.yaml --input test_secrets.py --output -
+cloak sanitize --policy examples/mcp_policy.yaml --input test_secrets.py --output -
 ```
 
 **Expected output**:
@@ -363,13 +363,13 @@ DB_URL = "PZ-Gh9Ij1Kl3"
 
 ```bash
 # Pack: Replace secrets with tags (vaulted)
-mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 
 # Now safe to share with LLMs (secrets replaced with TAG-xxxxxxxxxxxx)
 # Vault stored securely in ~/.cloakmcp/vaults/
 
 # Unpack: Restore original secrets
-mcp unpack --dir .
+cloak unpack --dir .
 ```
 
 ---
@@ -420,37 +420,37 @@ pip install pytest pytest-cov black mypy bandit
 
 ### CLI Commands
 
-#### `mcp scan`
+#### `cloak scan`
 
 Scan file for secrets (audit mode, no modification):
 
 ```bash
-mcp scan --policy examples/mcp_policy.yaml --input file.py
+cloak scan --policy examples/mcp_policy.yaml --input file.py
 ```
 
 **Output**: Logs written to `audit/audit.jsonl`
 
-#### `mcp sanitize`
+#### `cloak sanitize`
 
 Sanitize file and output result:
 
 ```bash
 # Preview to stdout
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output -
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output -
 
 # Overwrite file (use with caution)
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
 
 # Write to new file
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output file.sanitized.py
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.sanitized.py
 ```
 
-#### `mcp pack`
+#### `cloak pack`
 
 Pack directory (replace secrets with tags):
 
 ```bash
-mcp pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
 ```
 
 **What it does**:
@@ -459,12 +459,12 @@ mcp pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
 - Stores mapping in encrypted vault: `~/.cloakmcp/vaults/<slug>.vault`
 - Modifies files **in place**
 
-#### `mcp unpack`
+#### `cloak unpack`
 
 Unpack directory (restore secrets from vault):
 
 ```bash
-mcp unpack --dir /path/to/project
+cloak unpack --dir /path/to/project
 ```
 
 **What it does**:
@@ -621,7 +621,7 @@ CloakMCP includes an optional FastAPI server for real-time sanitization.
 openssl rand -hex 32 > keys/mcp_api_token
 
 # Start server (localhost only)
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 ```
 
 ### Endpoints
@@ -697,7 +697,7 @@ curl -X POST http://127.0.0.1:8765/sanitize \
 
 ```bash
 # 1. Pack project (anonymize)
-mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 
 # 2. Verify secrets removed
 grep -r "AKIA" .  # Should return nothing
@@ -710,7 +710,7 @@ grep -r "TAG-" .  # Should find tags
 # (Tags preserved in LLM output)
 
 # 5. Unpack to restore secrets
-mcp unpack --dir .
+cloak unpack --dir .
 
 # 6. Verify restoration
 git diff  # Should show no changes if no edits made
@@ -728,9 +728,9 @@ echo "🔒 CloakMCP: Scanning staged files for secrets..."
 
 for file in $(git diff --cached --name-only --diff-filter=ACM); do
   if [ -f "$file" ]; then
-    if ! mcp scan --policy examples/mcp_policy.yaml --input "$file"; then
+    if ! cloak scan --policy examples/mcp_policy.yaml --input "$file"; then
       echo "❌ Secrets detected in $file. Commit blocked."
-      echo "   Fix: mcp sanitize --policy examples/mcp_policy.yaml --input $file --output $file"
+      echo "   Fix: cloak sanitize --policy examples/mcp_policy.yaml --input $file --output $file"
       exit 1
     fi
   fi
@@ -773,7 +773,7 @@ jobs:
           echo "${{ secrets.MCP_HMAC_KEY }}" > keys/mcp_hmac_key
 
       - name: Pack secrets (anonymize)
-        run: mcp pack --policy examples/mcp_policy.yaml --dir . --prefix CI_TAG
+        run: cloak pack --policy examples/mcp_policy.yaml --dir . --prefix CI_TAG
 
       - name: Run tests
         run: pytest -v
@@ -797,7 +797,7 @@ pip install pytest pytest-cov
 pytest -v
 
 # Run with coverage
-pytest --cov=mcp --cov-report=html --cov-report=term
+pytest --cov=cloak --cov-report=html --cov-report=term
 
 # View coverage report
 xdg-open htmlcov/index.html  # Linux
@@ -911,7 +911,7 @@ CloakMCP/
 │   ├── settings.json
 │   └── tasks.json
 ├── deploy/                     # Deployment configs
-│   └── mcp-local.service       # systemd service
+│   └── cloak-local.service       # systemd service
 ├── api/                        # API examples
 │   └── requests.http           # REST Client examples
 ├── docs/                       # Documentation
@@ -977,7 +977,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 - [ ] Security checks pass (`bandit -r mcp/`)
 - [ ] Documentation updated
 - [ ] CHANGELOG.md updated
-- [ ] No secrets committed (run `mcp scan`)
+- [ ] No secrets committed (run `cloak scan`)
 
 **📖 Full guide**: See [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
@@ -985,10 +985,10 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## 📝 Changelog
 
-### v0.3.0 (2025-11-11) — Security Hardening Release
+### v0.3.1 (2025-11-11) — Security Hardening Release
 
 **BREAKING CHANGES**:
-- Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256. **Existing vaults are incompatible** with v0.3.0. Backup your vaults before upgrading.
+- Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256. **Existing vaults are incompatible** with v0.3.1. Backup your vaults before upgrading.
 
 **Security** (Critical):
 - **HMAC-based tags**: Vault tags now use HMAC-SHA256 with vault key, preventing brute-force attacks on structured secrets
@@ -1120,7 +1120,7 @@ See [`AUTHORS.md`](AUTHORS.md) for the full list of contributors.
 
 | Problem                       | Solution                                          |
 | ----------------------------- | ------------------------------------------------- |
-| `mcp: command not found`      | Activate venv: `source .venv/bin/activate`        |
+| `cloak: command not found`      | Activate venv: `source .venv/bin/activate`        |
 | `Missing API token`           | Create: `openssl rand -hex 32 > keys/mcp_api_token` |
 | `Policy file not found`       | Use absolute path or check working directory      |
 | Secrets not detected          | Add custom rule to `mcp_policy.yaml`              |

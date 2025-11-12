@@ -12,8 +12,8 @@
 **Issues**
 
 1. **Name collision / ambiguity**:
-   - `CloakMCP` with CLI `mcp`:
-     - “MCP” is heavily overloaded (Anthropic’s Model Context Protocol, etc.), and `mcp` as a binary is likely to conflict.
+   - `CloakMCP` with CLI `cloak`:
+     - “MCP” is heavily overloaded (Anthropic’s Model Context Protocol, etc.), and `cloak` as a binary is likely to conflict.
    - This hurts discoverability and adoption; looks like “yet another MCP-related thing” instead of a standalone primitive.
 2. **Competitive landscape underplayed**:
    - README hints inspiration from ggshield/SOPS etc., but doesn’t explicitly articulate:
@@ -159,18 +159,18 @@ Based on README/SERVER docs only.
 **Potential issues / questions**
 
 1. **“Modify in place” semantics for `pack`/`unpack`**:
-   - High risk UX: a mistaken `mcp pack` on wrong path can mass-edit files.
+   - High risk UX: a mistaken `cloak pack` on wrong path can mass-edit files.
    - The project warns, but:
      - no default dry-run,
      - no built-in git workspace safety check,
      - no snapshot/backup mechanism.
    - For a tool whose failure mode is “silently mangled secrets”, this is dangerous.
 2. **CLI ergonomics & naming consistency**
-   - Binary `mcp` vs project `CloakMCP` vs Model Context Protocol.
+   - Binary `cloak` vs project `CloakMCP` vs Model Context Protocol.
    - Mixing:
-     - `mcp scan/sanitize/pack/unpack`
+     - `cloak scan/sanitize/pack/unpack`
      - vault-export/import/stats
-   - It’s functional, but crowded; consider hierarchical commands (`mcp vault export`, etc.) for clarity.
+   - It’s functional, but crowded; consider hierarchical commands (`cloak vault export`, etc.) for clarity.
 3. **Server + CLI code paths**
    - Docs suggest a lot of features: rate limiting, token auth, HMAC caching, etc.
    - For credibility, ensure:
