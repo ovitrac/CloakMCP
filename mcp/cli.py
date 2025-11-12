@@ -116,6 +116,17 @@ def main() -> None:
     s_vault_stats = sub.add_parser("vault-stats", help="Display vault statistics")
     s_vault_stats.add_argument("--dir", required=True, help="Project directory")
 
+    # Policy management commands
+    s_policy = sub.add_parser("policy", help="Policy management (validate, show merged policy)")
+    policy_sub = s_policy.add_subparsers(dest="policy_cmd", required=True)
+
+    s_policy_validate = policy_sub.add_parser("validate", help="Validate policy file (including inheritance)")
+    s_policy_validate.add_argument("--policy", required=True, help="Policy file to validate")
+
+    s_policy_show = policy_sub.add_parser("show", help="Show merged policy (after inheritance)")
+    s_policy_show.add_argument("--policy", required=True, help="Policy file to show")
+    s_policy_show.add_argument("--format", choices=["yaml", "json"], default="yaml", help="Output format")
+
     args = p.parse_args()
     if args.cmd == "scan":
         _validate_policy_path(args.policy)
@@ -186,6 +197,40 @@ def main() -> None:
         print(f"  Vault location: {vault.vault_path}", file=sys.stderr)
         print(f"  Key location: {vault.key_path}", file=sys.stderr)
         return
+
+    if args.cmd == "policy":
+        from .policy import validate_policy, policy_to_yaml
+        import json
+
+        if args.policy_cmd == "validate":
+            _validate_policy_path(args.policy)
+            is_valid, errors = validate_policy(args.policy)
+            if is_valid:
+                print(f"✓ Policy is valid: {args.policy}", file=sys.stderr)
+                policy = Policy.load(args.policy)
+                if len(policy._inherits_from) > 1:
+                    print(f"  Inheritance chain:", file=sys.stderr)
+                    for i, path in enumerate(policy._inherits_from, 1):
+                        print(f"    {i}. {path}", file=sys.stderr)
+                print(f"  Total detection rules: {len(policy.rules)}", file=sys.stderr)
+                sys.exit(0)
+            else:
+                print(f"✗ Policy validation failed: {args.policy}", file=sys.stderr)
+                for error in errors:
+                    print(f"  - {error}", file=sys.stderr)
+                sys.exit(1)
+
+        elif args.policy_cmd == "show":
+            _validate_policy_path(args.policy)
+            policy = Policy.load(args.policy)
+            if args.format == "yaml":
+                print(policy_to_yaml(policy, include_inheritance=True))
+            elif args.format == "json":
+                from .policy import _policy_to_dict
+                data = _policy_to_dict(policy)
+                data.pop("_inherits_from", None)  # Remove internal field
+                print(json.dumps(data, indent=2))
+            return
 
 if __name__ == "__main__":
     main()

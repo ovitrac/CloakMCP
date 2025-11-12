@@ -1,0 +1,84 @@
+# Project Policy with Inheritance Example
+#
+# This example demonstrates a project-level policy that inherits from
+# company-wide and team-specific policies, then adds project-specific rules.
+#
+# Inheritance chain:
+#   1. ~/.cloakmcp/policies/company-baseline.yaml (company rules)
+#   2. ~/.cloakmcp/policies/team-backend.yaml (team rules)
+#   3. This file (project-specific rules + overrides)
+#
+# Setup required:
+#   mkdir -p ~/.cloakmcp/policies
+#   cp examples/policies/company-baseline.yaml ~/.cloakmcp/policies/
+#   cp examples/policies/team-backend.yaml ~/.cloakmcp/policies/
+#
+# Test inheritance:
+#   cloak policy validate --policy examples/project-with-inheritance.yaml
+#   cloak policy show --policy examples/project-with-inheritance.yaml
+
+version: 1
+
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml  # Company mandatory rules
+  - ~/.cloakmcp/policies/team-backend.yaml      # Team-specific rules
+
+globals:
+  # Override company default for this project (less strict)
+  default_action: redact  # Company default is 'block'
+
+  audit:
+    enabled: true
+    path: ./audit/audit.jsonl
+    include_value_hash: true
+
+  # IMPORTANT: Each project has its OWN encryption key (not shared)
+  pseudonymization:
+    method: hmac-sha256
+    secret_key_file: ./keys/mcp_hmac_key  # PROJECT-SPECIFIC key
+    salt: session
+
+detection:
+  # Project-specific API token (not in company/team policies)
+  - id: project_api_token
+    type: regex
+    pattern: '\bPROJ-[A-Z0-9]{24}\b'
+    action: block
+
+  # Project uses Stripe - detect API keys
+  - id: stripe_secret_key
+    type: regex
+    pattern: '\bsk_(test|live)_[A-Za-z0-9]{24,}\b'
+    action: block
+
+  - id: stripe_publishable_key
+    type: regex
+    pattern: '\bpk_(test|live)_[A-Za-z0-9]{24,}\b'
+    action: redact
+
+  # Override company rule: redact internal emails instead of pseudonymize
+  # (Rule with same ID replaces parent rule)
+  - id: internal_email
+    type: regex
+    pattern: '[a-z0-9_.+\-]+@company\.com'
+    action: redact  # OVERRIDE: Company policy uses 'pseudonymize'
+
+  # Project uses SendGrid
+  - id: sendgrid_api_key
+    type: regex
+    pattern: '\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b'
+    action: block
+
+whitelist:
+  # Project-specific whitelist (concatenated with parent whitelists)
+  emails:
+    - '*@trusted-partner.com'  # Allow partner emails
+
+  urls:
+    - https://api.stripe.com
+    - https://api.sendgrid.com
+
+blacklist:
+  # Project-specific blacklist (concatenated with parent blacklists)
+  urls:
+    - project-internal.company.local

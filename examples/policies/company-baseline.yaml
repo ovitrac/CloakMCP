@@ -1,0 +1,89 @@
+# Company-Wide Baseline Policy
+#
+# PURPOSE: Define mandatory detection rules for all projects across the organization.
+# DISTRIBUTION: Store in ~/.cloakmcp/policies/company-baseline.yaml on developer machines.
+# SECURITY: This file contains RULES only, no encryption keys or secrets.
+#
+# Installation:
+#   mkdir -p ~/.cloakmcp/policies
+#   cp examples/policies/company-baseline.yaml ~/.cloakmcp/policies/
+#
+# Usage in project policies:
+#   inherits:
+#     - ~/.cloakmcp/policies/company-baseline.yaml
+
+version: 1
+
+globals:
+  # Company standard: block secrets by default (strictest setting)
+  default_action: block
+
+  audit:
+    enabled: true
+    include_value_hash: true
+
+detection:
+  # Company API keys (high priority - never commit these)
+  - id: company_api_key
+    type: regex
+    pattern: '\bCOMP-[A-Z0-9]{32}\b'
+    action: block
+
+  # AWS credentials (critical)
+  - id: aws_access_key
+    type: regex
+    pattern: '\b(AKIA|ASIA)[A-Z0-9]{16}\b'
+    action: block
+
+  - id: aws_secret_key
+    type: regex
+    pattern: '\baws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}\b'
+    action: block
+
+  # GCP credentials
+  - id: gcp_api_key
+    type: regex
+    pattern: '\bAIza[0-9A-Za-z\-_]{35}\b'
+    action: block
+
+  # SSH private keys
+  - id: ssh_private_key
+    type: regex
+    pattern: '(?s)-----BEGIN (?:OPENSSH|RSA|DSA|EC|ED25519) PRIVATE KEY-----.*?-----END .*? PRIVATE KEY-----'
+    action: block
+
+  # Internal email addresses (pseudonymize for GDPR compliance)
+  - id: internal_email
+    type: regex
+    pattern: '[a-z0-9_.+\-]+@(company\.com|internal\.company)'
+    action: pseudonymize
+
+  # JWT tokens (likely contain sensitive claims)
+  - id: jwt_token
+    type: regex
+    pattern: '\b[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b'
+    action: pseudonymize
+
+  # High entropy tokens (stricter than default for company standards)
+  - id: high_entropy_token
+    type: entropy
+    min_entropy: 4.8  # Company standard (default is 4.5)
+    min_length: 20
+    action: redact
+
+  # IP addresses (redact external IPs, allow RFC1918)
+  - id: ipv4
+    type: ipv4
+    whitelist_cidrs: ['10.0.0.0/8', '192.168.0.0/16', '172.16.0.0/12']
+    action: pseudonymize
+
+blacklist:
+  # Internal infrastructure (never expose these)
+  urls:
+    - internal-api.company.com
+    - staging.company.local
+    - vault.internal.company
+
+  emails:
+    - admin@company.com
+    - security@company.com
