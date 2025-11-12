@@ -59,7 +59,7 @@ class StatusResponse(BaseModel):
 app = FastAPI(
     title="Cloak (Micro-Cleanse Preprocessor) — Local API",
     description="Local-only secret removal proxy. Bind to 127.0.0.1 by default. DO NOT expose publicly.",
-    version="0.3.1",
+    version="0.3.2",
 )
 
 # Initialize rate limiter if available

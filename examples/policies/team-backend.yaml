@@ -1,0 +1,66 @@
+# Backend Team Policy
+#
+# PURPOSE: Backend-specific detection rules (database, Redis, message queues).
+# INHERITS: Company baseline + adds team-specific rules.
+# DISTRIBUTION: Store in ~/.cloakmcp/policies/team-backend.yaml
+#
+# Installation:
+#   mkdir -p ~/.cloakmcp/policies
+#   cp examples/policies/team-backend.yaml ~/.cloakmcp/policies/
+#
+# Usage in backend project policies:
+#   inherits:
+#     - ~/.cloakmcp/policies/company-baseline.yaml
+#     - ~/.cloakmcp/policies/team-backend.yaml
+
+version: 1
+
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml  # Company rules first
+
+detection:
+  # Database connection strings
+  - id: postgresql_connection
+    type: regex
+    pattern: 'postgresql://[^\s]+'
+    action: block
+
+  - id: mysql_connection
+    type: regex
+    pattern: 'mysql://[^\s]+'
+    action: block
+
+  - id: mongodb_connection
+    type: regex
+    pattern: 'mongodb(\+srv)?://[^\s]+'
+    action: block
+
+  # Redis credentials
+  - id: redis_password
+    type: regex
+    pattern: 'redis://:[^@]+@'
+    action: block
+
+  # RabbitMQ credentials
+  - id: rabbitmq_connection
+    type: regex
+    pattern: 'amqps?://[^:]+:[^@]+@'
+    action: block
+
+  # SQL credentials in environment variables
+  - id: db_password_env
+    type: regex
+    pattern: 'DB_PASSWORD\s*=\s*[^\s]+'
+    action: block
+
+  # ORM connection strings
+  - id: sequelize_connection
+    type: regex
+    pattern: '"dialect":\s*"(mysql|postgres|sqlite|mssql)".*"password":\s*"[^"]+"'
+    action: block
+
+blacklist:
+  urls:
+    - db.internal.company
+    - redis.internal.company
+    - rabbitmq.internal.company
