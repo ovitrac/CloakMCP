@@ -81,7 +81,7 @@ def sanitize_text(text: str, policy: Policy, dry_run: bool = False) -> Tuple[str
     return ("".join(out) if not dry_run else text, blocked)
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="mcp", description="Micro-Cleanse Preprocessor (local secret-removal)")
+    p = argparse.ArgumentParser(prog="cloak", description="Micro-Cleanse Preprocessor (local secret-removal)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s_scan = sub.add_parser("scan", help="Scan input and log detections (no modifications)")
@@ -97,9 +97,13 @@ def main() -> None:
     s_pack.add_argument("--policy", required=True)
     s_pack.add_argument("--dir", required=True, help="Directory to process")
     s_pack.add_argument("--prefix", default="TAG", help="Tag prefix (e.g., TAG, SEC, KEY)")
+    s_pack.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+    s_pack.add_argument("--no-backup", action="store_true", help="Disable automatic backup (not recommended)")
 
     s_unpack = sub.add_parser("unpack", help="Unpack a directory: restore tags from vault")
     s_unpack.add_argument("--dir", required=True, help="Directory to process")
+    s_unpack.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+    s_unpack.add_argument("--no-backup", action="store_true", help="Disable automatic backup (not recommended)")
 
     s_vault_export = sub.add_parser("vault-export", help="Export vault to encrypted backup file")
     s_vault_export.add_argument("--dir", required=True, help="Project directory")
@@ -137,12 +141,16 @@ def main() -> None:
         _validate_policy_path(args.policy)
         _validate_dir_path(args.dir, "directory")
         policy = Policy.load(args.policy)
-        pack_dir(args.dir, policy, prefix=args.prefix, in_place=True)
+        dry_run = getattr(args, 'dry_run', False)
+        no_backup = getattr(args, 'no_backup', False)
+        pack_dir(args.dir, policy, prefix=args.prefix, in_place=True, dry_run=dry_run, backup=not no_backup)
         return
 
     if args.cmd == "unpack":
         _validate_dir_path(args.dir, "directory")
-        unpack_dir(args.dir)
+        dry_run = getattr(args, 'dry_run', False)
+        no_backup = getattr(args, 'no_backup', False)
+        unpack_dir(args.dir, dry_run=dry_run, backup=not no_backup)
         return
 
     if args.cmd == "vault-export":

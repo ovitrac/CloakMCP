@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp"
-version = "0.3.0"
+name = "cloak"
+version = "0.3.1"
 description = "Micro-Cleanse Preprocessor: local secret-removal agent (with vault pack/unpack)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp = "mcp.cli:main"
+cloak = "mcp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

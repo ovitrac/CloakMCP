@@ -13,6 +13,6 @@ pip install pytest mypy black isort
 ## Tests & style
 ```bash
 pytest -q
-mypy mcp
+mypy cloak
 black --check . && isort --check-only .
 ```

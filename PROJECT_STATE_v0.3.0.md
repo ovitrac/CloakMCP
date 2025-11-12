@@ -1,7 +1,7 @@
-# CloakMCP v0.3.0 — Project State & Next Steps
+# CloakMCP v0.3.1 — Project State & Next Steps
 
 **Date**: 2025-11-11
-**Version**: 0.3.0-alpha
+**Version**: 0.3.1-alpha
 **Status**: ✅ Critical security fixes complete, ready for testing
 **Last Updated**: 2025-11-11 20:30 UTC
 
@@ -10,7 +10,7 @@
 ## ✅ COMPLETED TODAY (Session Summary)
 
 ### 1. **Full Backup Created**
-- Location: `.backups/20251111_202023_pre_v0.3.0/`
+- Location: `.backups/20251111_202023_pre_v0.3.1/`
 - Size: 420 KB
 - All source code, documentation, tests backed up
 
@@ -26,9 +26,9 @@
 - **Impact**: Clear guidance against network exposure
 - **Status**: ✅ Complete
 
-### 4. **Version Bump to 0.3.0**
+### 4. **Version Bump to 0.3.1**
 - **Files Updated**: 11 files (mcp/__init__.py, pyproject.toml, etc.)
-- **Badge**: 0.2.5-beta → 0.3.0-alpha (orange)
+- **Badge**: 0.2.5-beta → 0.3.1-alpha (orange)
 - **Status**: ✅ Complete
 
 ### 5. **README.md Enhanced**
@@ -39,9 +39,9 @@
 - **Status**: ✅ Complete
 
 ### 6. **Documentation Created**
-- `V0.3.0_SECURITY_RELEASE_SUMMARY.md` (6,000+ words)
+- `V0.3.1_SECURITY_RELEASE_SUMMARY.md` (6,000+ words)
 - `IMMEDIATE_ACTION_COMPLETE.md`
-- `README_v0.3.0_UPDATES.md`
+- `README_v0.3.1_UPDATES.md`
 - **Status**: ✅ Complete
 
 ### 7. **Tests Verified**
@@ -53,18 +53,18 @@
 
 ## 🔴 BREAKING CHANGE WARNING
 
-**Vault Format Incompatibility**: v0.3.0 uses HMAC-based tags, incompatible with v0.2.5 vaults
+**Vault Format Incompatibility**: v0.3.1 uses HMAC-based tags, incompatible with v0.2.5 vaults
 
 **User Migration Path**:
 ```bash
 # With v0.2.5 installed:
-mcp unpack --dir /project  # Restore secrets
+cloak unpack --dir /project  # Restore secrets
 
 # Upgrade:
 pip install -e .
 
-# With v0.3.0 installed:
-mcp pack --policy policy.yaml --dir /project  # New HMAC tags
+# With v0.3.1 installed:
+cloak pack --policy policy.yaml --dir /project  # New HMAC tags
 ```
 
 ---
@@ -78,9 +78,9 @@ mcp pack --policy policy.yaml --dir /project  # New HMAC tags
 
 **Tasks**:
 - [ ] Create test project with secrets
-- [ ] Run `mcp pack` twice, verify identical tags
+- [ ] Run `cloak pack` twice, verify identical tags
 - [ ] Test vault export/import with HMAC tags
-- [ ] Verify migration path from v0.2.5 → v0.3.0
+- [ ] Verify migration path from v0.2.5 → v0.3.1
 - [ ] Test error messages for incompatible vaults
 
 **Commands**:
@@ -88,13 +88,13 @@ mcp pack --policy policy.yaml --dir /project  # New HMAC tags
 # Test determinism
 mkdir test-project && cd test-project
 echo "API_KEY=sk_test_12345" > config.py
-mcp pack --policy ../examples/mcp_policy.yaml --dir . --prefix TEST
+cloak pack --policy ../examples/mcp_policy.yaml --dir . --prefix TEST
 cat config.py  # Note TAG-xxxxx
 
-mcp unpack --dir .
+cloak unpack --dir .
 cat config.py  # Should show original secret
 
-mcp pack --policy ../examples/mcp_policy.yaml --dir . --prefix TEST
+cloak pack --policy ../examples/mcp_policy.yaml --dir . --prefix TEST
 cat config.py  # Should show SAME TAG-xxxxx
 ```
 
@@ -103,7 +103,7 @@ cat config.py  # Should show SAME TAG-xxxxx
 ---
 
 #### 2. **Binary Rename** (HIGH PRIORITY - Review Feedback)
-**Why**: `mcp` conflicts with Anthropic's Model Context Protocol
+**Why**: `cloak` conflicts with Anthropic's Model Context Protocol
 
 **Options**:
 - **Option A**: `cloak` (short, memorable)
@@ -146,11 +146,11 @@ git diff
 git add -A
 
 # Commit with detailed message
-git commit -m "v0.3.0-alpha: Critical security hardening
+git commit -m "v0.3.1-alpha: Critical security hardening
 
 BREAKING CHANGES:
 - Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256
-- Existing vaults incompatible with v0.3.0
+- Existing vaults incompatible with v0.3.1
 
 Security Fixes:
 - HMAC-based tag generation prevents brute-force attacks
@@ -164,11 +164,11 @@ Documentation:
 - Added 5 Mermaid diagrams for security architecture
 
 Version:
-- Bumped 0.2.5-beta → 0.3.0-alpha
+- Bumped 0.2.5-beta → 0.3.1-alpha
 - Changed badge to orange (ongoing security review)"
 
 # Create annotated tag
-git tag -a v0.3.0-alpha -m "Security hardening release - HMAC tags, server warnings, docs"
+git tag -a v0.3.1-alpha -m "Security hardening release - HMAC tags, server warnings, docs"
 
 # Push (when ready)
 git push origin main --tags
@@ -184,7 +184,7 @@ git push origin main --tags
 **Why**: In-place modification can be dangerous
 
 **Tasks**:
-- [ ] Add `--dry-run` flag to `mcp pack`
+- [ ] Add `--dry-run` flag to `cloak pack`
 - [ ] Add `--backup` flag (create `.bak` files)
 - [ ] Add git workspace check (warn on uncommitted changes)
 - [ ] Consider making `--dry-run` default, require `--commit` to modify
@@ -215,7 +215,7 @@ def pack_command(args):
 **Why**: Users need ability to rekey vaults
 
 **Tasks**:
-- [ ] Implement `mcp vault rekey` command
+- [ ] Implement `cloak vault rekey` command
 - [ ] Backup old vault before rekeying
 - [ ] Re-encrypt all secrets with new key
 - [ ] Update all tags (will change with new HMAC key)
@@ -272,7 +272,7 @@ def vault_rekey(args):
 ## Out of Scope
 - ❌ Compromised developer workstations
 - ❌ Users exposing server to public internet
-- ❌ Brute-force on low-entropy secrets (mitigated in v0.3.0 with HMAC)
+- ❌ Brute-force on low-entropy secrets (mitigated in v0.3.1 with HMAC)
 
 ## Assumptions
 - Local machine is trusted
@@ -356,7 +356,7 @@ CloakMCP uses Python's `cryptography.Fernet` which provides:
 ```
 CloakMCP/
 ├── .backups/
-│   └── 20251111_202023_pre_v0.3.0/  # Full backup before v0.3.0
+│   └── 20251111_202023_pre_v0.3.1/  # Full backup before v0.3.1
 ├── .vscode/
 │   ├── keybindings.json
 │   ├── settings.json
@@ -369,7 +369,7 @@ CloakMCP/
 ├── keys/
 │   └── .gitkeep
 ├── mcp/
-│   ├── __init__.py          # Version: 0.3.0
+│   ├── __init__.py          # Version: 0.3.1
 │   ├── actions.py           # HMAC pseudonymization
 │   ├── audit.py
 │   ├── cli.py               # Main CLI entry
@@ -377,7 +377,7 @@ CloakMCP/
 │   ├── normalizer.py
 │   ├── policy.py            # YAML policy parsing
 │   ├── scanner.py           # Secret detection
-│   ├── server.py            # FastAPI server (v0.3.0)
+│   ├── server.py            # FastAPI server (v0.3.1)
 │   ├── storage.py           # ✅ HMAC-based tags (NEW)
 │   └── utils.py
 ├── tests/
@@ -395,15 +395,15 @@ CloakMCP/
 ├── ISSUES_ADDRESSED_SUMMARY.md
 ├── ISSUES_REPORT.md
 ├── LICENSE
-├── PROJECT_STATE_v0.3.0.md  # ✅ THIS FILE
-├── pyproject.toml           # Version: 0.3.0
+├── PROJECT_STATE_v0.3.1.md  # ✅ THIS FILE
+├── pyproject.toml           # Version: 0.3.1
 ├── pytest.ini
-├── QUICKREF.md              # Version: 0.3.0
-├── README.md                # Version: 0.3.0, ✅ Enhanced
-├── README_v0.3.0_UPDATES.md # README update summary
+├── QUICKREF.md              # Version: 0.3.1
+├── README.md                # Version: 0.3.1, ✅ Enhanced
+├── README_v0.3.1_UPDATES.md # README update summary
 ├── SECURITY.md
 ├── SERVER.md                # ✅ New, 20 KB, security warnings
-├── V0.3.0_SECURITY_RELEASE_SUMMARY.md  # ✅ Complete release notes
+├── V0.3.1_SECURITY_RELEASE_SUMMARY.md  # ✅ Complete release notes
 └── VSCODE_MANUAL.md
 
 Total Documentation: 4,500+ lines across 20+ files
@@ -420,7 +420,7 @@ Total Documentation: 4,500+ lines across 20+ files
 ### ⚠️ Manual Testing Required
 - [ ] HMAC tag determinism (same secret → same tag)
 - [ ] Vault export/import with HMAC tags
-- [ ] Migration path v0.2.5 → v0.3.0
+- [ ] Migration path v0.2.5 → v0.3.1
 - [ ] Error messages for incompatible vaults
 - [ ] Pack/unpack roundtrip
 
@@ -434,7 +434,7 @@ Total Documentation: 4,500+ lines across 20+ files
 
 ## 🔐 SECURITY STATUS
 
-### ✅ Fixed (v0.3.0)
+### ✅ Fixed (v0.3.1)
 - [x] HMAC-based tags (prevents brute-force)
 - [x] Server security warnings (3 locations)
 - [x] Accurate security claims (no overstatement)
@@ -453,7 +453,7 @@ Total Documentation: 4,500+ lines across 20+ files
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.3.0-alpha |
+| **Version** | 0.3.1-alpha |
 | **Lines of Code** | ~2,000 (Python) |
 | **Documentation** | 4,500+ lines across 20+ files |
 | **Tests** | 90+ tests (1 passing smoke test verified) |
@@ -475,7 +475,7 @@ Total Documentation: 4,500+ lines across 20+ files
 
 ### Option 2: Polish Before Release (1-2 days)
 1. **Manual HMAC testing** (30 min)
-2. **Binary rename** (`mcp` → `cloak`) (2-3 hours)
+2. **Binary rename** (`cloak` → `cloak`) (2-3 hours)
 3. **Pack/unpack safety features** (4-6 hours)
 4. **Git commit & tag** (10 min)
 5. **Push to GitHub** (5 min)
@@ -503,10 +503,10 @@ python3 -m pytest tests/test_smoke.py -v
 # Manual HMAC test
 cd /tmp && mkdir test-hmac && cd test-hmac
 echo "SECRET=sk_test_abc123" > config.py
-mcp pack --policy ~/CloakMCP/examples/mcp_policy.yaml --dir .
+cloak pack --policy ~/CloakMCP/examples/mcp_policy.yaml --dir .
 cat config.py  # Note tag
-mcp unpack --dir .
-mcp pack --policy ~/CloakMCP/examples/mcp_policy.yaml --dir .
+cloak unpack --dir .
+cloak pack --policy ~/CloakMCP/examples/mcp_policy.yaml --dir .
 cat config.py  # Verify same tag
 ```
 
@@ -517,8 +517,8 @@ git status
 
 # Commit changes
 git add -A
-git commit -m "v0.3.0-alpha: Security hardening (HMAC tags, server warnings)"
-git tag -a v0.3.0-alpha -m "Security hardening release"
+git commit -m "v0.3.1-alpha: Security hardening (HMAC tags, server warnings)"
+git tag -a v0.3.1-alpha -m "Security hardening release"
 
 # Push (when ready)
 git push origin main --tags
@@ -527,10 +527,10 @@ git push origin main --tags
 ### Backup Recovery
 ```bash
 # Restore everything
-cp -r .backups/20251111_202023_pre_v0.3.0/* .
+cp -r .backups/20251111_202023_pre_v0.3.1/* .
 
 # Restore specific file
-cp .backups/20251111_202023_pre_v0.3.0/mcp/storage.py mcp/storage.py
+cp .backups/20251111_202023_pre_v0.3.1/mcp/storage.py mcp/storage.py
 ```
 
 ---
@@ -538,17 +538,17 @@ cp .backups/20251111_202023_pre_v0.3.0/mcp/storage.py mcp/storage.py
 ## ⚠️ KNOWN ISSUES
 
 ### 1. **Vault Migration Not Automated**
-- **Issue**: Users must manually unpack v0.2.5 → upgrade → repack v0.3.0
+- **Issue**: Users must manually unpack v0.2.5 → upgrade → repack v0.3.1
 - **Priority**: Medium
 - **Solution**: Add migration command in future version
 
 ### 2. **No Vault Format Version Check**
-- **Issue**: v0.3.0 will fail on v0.2.5 vaults without clear error
+- **Issue**: v0.3.1 will fail on v0.2.5 vaults without clear error
 - **Priority**: Medium
 - **Solution**: Add vault format version field
 
 ### 3. **Binary Name Collision**
-- **Issue**: `mcp` conflicts with Anthropic's Model Context Protocol
+- **Issue**: `cloak` conflicts with Anthropic's Model Context Protocol
 - **Priority**: High
 - **Solution**: Rename to `cloak` or `cloakmcp`
 
@@ -568,19 +568,19 @@ cp .backups/20251111_202023_pre_v0.3.0/mcp/storage.py mcp/storage.py
 | **VSCODE_MANUAL.md** | 1,200 | ✅ Complete | IDE integration |
 | **QUICKREF.md** | 265 | ✅ Updated | One-page cheat sheet |
 | **CLAUDE.md** | — | ✅ Complete | Project specs for LLMs |
-| **V0.3.0_SECURITY_RELEASE_SUMMARY.md** | 428 | ✅ New | Release notes |
-| **PROJECT_STATE_v0.3.0.md** | — | ✅ This file | Current state & next steps |
+| **V0.3.1_SECURITY_RELEASE_SUMMARY.md** | 428 | ✅ New | Release notes |
+| **PROJECT_STATE_v0.3.1.md** | — | ✅ This file | Current state & next steps |
 | **THREAT_MODEL.md** | — | ❌ Missing | Security boundaries (TODO) |
 | **ARCHITECTURE.md** | — | ❌ Missing | Technical architecture (TODO) |
 
 ---
 
-## 🎉 SUCCESS CRITERIA FOR v0.3.0
+## 🎉 SUCCESS CRITERIA FOR v0.3.1
 
 ### Release Criteria
 - [x] HMAC-based tags implemented
 - [x] Server security warnings added
-- [x] Version bumped to 0.3.0
+- [x] Version bumped to 0.3.1
 - [x] Documentation updated
 - [x] Smoke test passing
 - [ ] Manual HMAC testing complete
@@ -603,7 +603,7 @@ cp .backups/20251111_202023_pre_v0.3.0/mcp/storage.py mcp/storage.py
 2. **Consider binary rename early** — High impact on adoption, affects all docs
 3. **Test migration path** — Ensure v0.2.5 users can upgrade smoothly
 4. **Monitor user feedback** — After release, watch for issues/questions
-5. **Keep backups** — Don't delete `.backups/20251111_202023_pre_v0.3.0/`
+5. **Keep backups** — Don't delete `.backups/20251111_202023_pre_v0.3.1/`
 
 ---
 
@@ -611,7 +611,7 @@ cp .backups/20251111_202023_pre_v0.3.0/mcp/storage.py mcp/storage.py
 
 **Project**: CloakMCP — Adservio Innovation Lab
 **Maintainer**: Olivier Vitrac
-**Version**: 0.3.0-alpha
+**Version**: 0.3.1-alpha
 **License**: MIT
 **Status**: ✅ Ready for testing, pending manual verification
 

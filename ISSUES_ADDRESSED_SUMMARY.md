@@ -40,13 +40,13 @@ All issues identified in `ISSUES_REPORT.md` have been systematically addressed. 
 
 **Before**:
 ```bash
-$ mcp scan --policy nonexistent.yaml --input test.py
+$ cloak scan --policy nonexistent.yaml --input test.py
 FileNotFoundError: [Errno 2] No such file or directory: 'nonexistent.yaml'
 ```
 
 **After**:
 ```bash
-$ mcp scan --policy nonexistent.yaml --input test.py
+$ cloak scan --policy nonexistent.yaml --input test.py
 Error: policy file does not exist: nonexistent.yaml
 ```
 
@@ -127,9 +127,9 @@ Rate limiting enabled: 10 requests/minute per IP
 
 **New Commands**:
 
-1. `mcp vault-export` — Backup vault to encrypted file
-2. `mcp vault-import` — Restore vault from backup
-3. `mcp vault-stats` — Display vault statistics
+1. `cloak vault-export` — Backup vault to encrypted file
+2. `cloak vault-import` — Restore vault from backup
+3. `cloak vault-stats` — Display vault statistics
 
 **Use Cases**:
 - Disaster recovery
@@ -140,15 +140,15 @@ Rate limiting enabled: 10 requests/minute per IP
 **Example Workflow**:
 ```bash
 # On machine 1: Export vault
-mcp vault-export --dir /project --output backup.vault
+cloak vault-export --dir /project --output backup.vault
 
 # Transfer backup.vault securely (encrypted, can use insecure channel)
 
 # On machine 2: Import vault
-mcp vault-import --dir /project --input backup.vault
+cloak vault-import --dir /project --input backup.vault
 
 # Verify
-mcp vault-stats --dir /project
+cloak vault-stats --dir /project
 ```
 
 ---
@@ -355,7 +355,7 @@ Beyond addressing issues, we also delivered:
 3. Update GitHub repository URL in README
 4. Create git tag: `git tag -a v0.2.5-beta -m "Beta release"`
 
-### Short-Term (v0.3.0)
+### Short-Term (v0.3.1)
 1. Add `--verbose` logging
 2. Implement pack dry-run mode
 3. Add operational metrics

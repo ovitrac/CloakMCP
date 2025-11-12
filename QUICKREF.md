@@ -1,6 +1,6 @@
 # CloakMCP Quick Reference Card
 
-**Version**: 0.3.0 | **One-page cheat sheet for daily use**
+**Version**: 0.3.1 | **One-page cheat sheet for daily use**
 
 ---
 
@@ -14,7 +14,7 @@ pip install -e .
 mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
 
 # 3. Test
-mcp scan --policy examples/mcp_policy.yaml --input README.md
+cloak scan --policy examples/mcp_policy.yaml --input README.md
 ```
 
 ---
@@ -32,27 +32,27 @@ mcp scan --policy examples/mcp_policy.yaml --input README.md
 
 ### Scan (no modification)
 ```bash
-mcp scan --policy examples/mcp_policy.yaml --input file.py
+cloak scan --policy examples/mcp_policy.yaml --input file.py
 ```
 
 ### Sanitize (preview to stdout)
 ```bash
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output -
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output -
 ```
 
 ### Sanitize (overwrite file)
 ```bash
-mcp sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
+cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
 ```
 
 ### Pack directory (anonymize all files)
 ```bash
-mcp pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
 ```
 
 ### Unpack directory (restore secrets)
 ```bash
-mcp unpack --dir /path/to/project
+cloak unpack --dir /path/to/project
 ```
 
 ---
@@ -72,7 +72,7 @@ mcp unpack --dir /path/to/project
 ### Start server
 ```bash
 openssl rand -hex 32 > keys/mcp_api_token  # Once
-uvicorn mcp.server:app --host 127.0.0.1 --port 8765
+uvicorn cloak.server:app --host 127.0.0.1 --port 8765
 ```
 
 ### Health check
@@ -138,25 +138,25 @@ detection:
 
 ### Workflow 1: Before sharing code with LLM
 ```bash
-mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 # Share project with Claude/Codex/etc.
 # After receiving modified code:
-mcp unpack --dir .
+cloak unpack --dir .
 ```
 
 ### Workflow 2: Pre-commit check
 ```bash
 for f in $(git diff --cached --name-only); do
-  mcp scan --policy examples/mcp_policy.yaml --input "$f" || exit 1
+  cloak scan --policy examples/mcp_policy.yaml --input "$f" || exit 1
 done
 ```
 
 ### Workflow 3: Sanitize before commit
 ```bash
-mcp pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 git add .
 git commit -m "feat: new feature [MCP-SANITIZED]"
-mcp unpack --dir .  # Restore for local work
+cloak unpack --dir .  # Restore for local work
 ```
 
 ---
@@ -165,7 +165,7 @@ mcp unpack --dir .  # Restore for local work
 
 | Problem                       | Solution                                          |
 | ----------------------------- | ------------------------------------------------- |
-| `mcp: command not found`      | Activate venv: `source .venv/bin/activate`        |
+| `cloak: command not found`      | Activate venv: `source .venv/bin/activate`        |
 | `Missing API token`           | Create: `openssl rand -hex 32 > keys/mcp_api_token` |
 | `Policy file not found`       | Use absolute path or check cwd                    |
 | Secrets not detected          | Add custom rule to policy YAML                    |
@@ -235,7 +235,7 @@ tail -20 audit/audit.jsonl | jq
 pytest -v
 
 # Run with coverage
-pytest --cov=mcp --cov-report=html
+pytest --cov=cloak --cov-report=html
 
 # View coverage
 xdg-open htmlcov/index.html
@@ -258,7 +258,7 @@ xdg-open htmlcov/index.html
 - **API docs** (when server running): http://127.0.0.1:8765/docs
 - **License**: MIT (see `LICENSE`)
 - **Author**: Olivier Vitrac — Adservio Innovation Lab
-- **Version**: 0.3.0 (alpha)
+- **Version**: 0.3.1 (alpha)
 
 ---
 

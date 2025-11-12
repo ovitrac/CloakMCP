@@ -4,7 +4,7 @@
     {
       "label": "MCP: Sanitize current file → preview",
       "type": "shell",
-      "command": "mcp sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
+      "command": "cloak sanitize --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file} --output -",
       "problemMatcher": [],
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared" }
@@ -12,7 +12,7 @@
     {
       "label": "MCP: Scan current file (audit only)",
       "type": "shell",
-      "command": "mcp scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
+      "command": "cloak scan --policy ${workspaceFolder}/examples/mcp_policy.yaml --input ${file}",
       "problemMatcher": [],
       "group": "none",
       "presentation": { "reveal": "never", "panel": "shared" }

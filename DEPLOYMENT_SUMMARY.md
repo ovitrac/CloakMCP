@@ -176,7 +176,7 @@ pip install pytest pytest-cov
 pytest -v
 
 # Run with coverage
-pytest --cov=mcp --cov-report=html
+pytest --cov=cloak --cov-report=html
 
 # View coverage report
 xdg-open htmlcov/index.html  # or open in browser
@@ -201,13 +201,13 @@ xdg-open htmlcov/index.html  # or open in browser
    echo "EMAIL=admin@example.com" > test_project/config.txt
 
    # Pack (anonymize)
-   mcp pack --policy examples/mcp_policy.yaml --dir test_project --prefix TAG
+   cloak pack --policy examples/mcp_policy.yaml --dir test_project --prefix TAG
 
    # Check result
    cat test_project/config.txt  # Should show TAG-xxxxxxxxxxxx
 
    # Unpack (restore)
-   mcp unpack --dir test_project
+   cloak unpack --dir test_project
    cat test_project/config.txt  # Should show original email
    ```
 
@@ -403,7 +403,7 @@ code ISSUES_REPORT.md
    # Follow quickstart in README
    ```
 
-### Short-Term (v0.3.0)
+### Short-Term (v0.3.1)
 
 1. Implement vault export/backup
 2. Add pack dry-run mode
