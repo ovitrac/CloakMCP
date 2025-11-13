@@ -1,6 +1,6 @@
 # CloakMCP Quick Reference Card
 
-**Version**: 0.3.1 | **One-page cheat sheet for daily use**
+**Version**: 0.3.2 | **One-page cheat sheet for daily use**
 
 ---
 
@@ -55,6 +55,16 @@ cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
 cloak unpack --dir /path/to/project
 ```
 
+### Policy management (NEW in v0.3.2)
+```bash
+# Validate policy (with inheritance)
+cloak policy validate --policy examples/mcp_policy.yaml
+
+# Show merged policy (after inheritance)
+cloak policy show --policy examples/mcp_policy.yaml --format yaml
+cloak policy show --policy examples/mcp_policy.yaml --format json
+```
+
 ---
 
 ## 🔐 Vault Locations
@@ -95,6 +105,12 @@ curl -H "Authorization: Bearer $(cat keys/mcp_api_token)" \
 
 ```yaml
 version: 1
+
+# NEW in v0.3.2: Inherit from parent policies
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml
+  - ~/.cloakmcp/policies/team-backend.yaml
+
 globals:
   default_action: redact
   audit:
@@ -110,6 +126,22 @@ detection:
     whitelist: ['allowed@domain.com']
     whitelist_cidrs: ['10.0.0.0/8']
 ```
+
+### Policy Inheritance (NEW in v0.3.2)
+
+```yaml
+# Inherit detection rules from company/team policies
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml  # Applied first
+  - relative/path/team-policy.yaml              # Overrides company
+  # Current file rules override all parents
+```
+
+**Key points**:
+- Policies share **rules**, NOT encryption keys
+- Later policies override earlier ones (for rules with same ID)
+- Use `cloak policy validate` to see full inheritance chain
+- Supports tilde (`~`) and relative paths
 
 ### Action Types
 
@@ -258,7 +290,7 @@ xdg-open htmlcov/index.html
 - **API docs** (when server running): http://127.0.0.1:8765/docs
 - **License**: MIT (see `LICENSE`)
 - **Author**: Olivier Vitrac — Adservio Innovation Lab
-- **Version**: 0.3.1 (alpha)
+- **Version**: 0.3.2 (alpha)
 
 ---
 
