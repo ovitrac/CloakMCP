@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.3.1--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.3.2--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -56,6 +56,7 @@ cloak sanitize --policy examples/mcp_policy.yaml --input test.py --output -
 - 🔄 **Reversible**: Deterministic tagging allows safe restoration via encrypted vaults
 - 📦 **Batch processing**: Pack/unpack entire codebases with one command
 - ⚙️ **Policy-driven**: Configure detection rules via YAML (regex, entropy, IPs, URLs)
+- 🏢 **Group policies**: Hierarchical policy inheritance (company → team → project)
 - 🔍 **Auditable**: Every operation logged to `audit/audit.jsonl`
 - 🚀 **LLM-ready**: Designed for safe collaboration with AI coding assistants
 - 💻 **VS Code integrated**: One-keystroke sanitization with `Ctrl+Alt+S`
@@ -106,6 +107,7 @@ cloak sanitize --policy examples/mcp_policy.yaml --input test.py --output -
 | **Sanitize**                 | Replace secrets with tags, hashes, or pseudonyms             |
 | **Pack/Unpack**              | Batch-process entire directories with encrypted vault storage|
 | **Policy Engine**            | YAML-based rules for detection and actions                   |
+| **Group Policies**           | Hierarchical policy inheritance with cycle detection         |
 | **Encrypted Vaults**         | AES-128 (Fernet) encryption for reversible secret storage    |
 | **Deterministic Tags**       | HMAC-based tags: same secret → same tag (cryptographically secure) |
 | **VS Code Integration**      | Keyboard shortcuts and tasks for seamless workflow           |
@@ -581,6 +583,195 @@ keys/
 
 ---
 
+## 🏢 Group Policies
+
+**New in v0.3.2**: Organizations can now define hierarchical security policies that cascade from company → team → project level.
+
+### Why Group Policies?
+
+- ✅ **Centralized compliance**: Define organization-wide baseline rules once
+- ✅ **Team customization**: Teams can add specialized rules (backend, frontend, DevOps)
+- ✅ **Project flexibility**: Individual projects can override or extend inherited rules
+- ✅ **Easy distribution**: Share policies via Git repos or internal package managers
+- ✅ **No key sharing**: Policies share RULES (detection patterns), NOT encryption keys
+
+### Architecture
+
+```mermaid
+graph TB
+    A[Company Baseline<br/>~/.cloakmcp/policies/company-baseline.yaml] --> B[Backend Team Policy<br/>~/.cloakmcp/policies/team-backend.yaml]
+    A --> C[Frontend Team Policy<br/>~/.cloakmcp/policies/team-frontend.yaml]
+    B --> D[Project Policy<br/>examples/my-project-policy.yaml]
+
+    style A fill:#ffcccc
+    style B fill:#ccffcc
+    style D fill:#ccccff
+```
+
+**Key principles**:
+1. Policies share **detection rules**, NOT vault keys
+2. Each project maintains its own **unique vault key**
+3. Later policies **override** earlier ones (for rules with same ID)
+4. Cycle detection prevents circular inheritance
+
+### Example: 3-Level Hierarchy
+
+#### Company Baseline (`~/.cloakmcp/policies/company-baseline.yaml`)
+```yaml
+version: 1
+
+globals:
+  default_action: block
+
+detection:
+  - id: company_api_key
+    type: regex
+    pattern: '\bCOMP-[A-Z0-9]{32}\b'
+    action: block
+
+  - id: aws_access_key
+    type: regex
+    pattern: '\b(AKIA|ASIA)[A-Z0-9]{16}\b'
+    action: block
+
+  - id: internal_email
+    type: regex
+    pattern: '[a-z0-9_.+\-]+@company\.com'
+    action: pseudonymize
+```
+
+#### Team Policy (`~/.cloakmcp/policies/team-backend.yaml`)
+```yaml
+version: 1
+
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml
+
+detection:
+  - id: postgresql_connection
+    type: regex
+    pattern: 'postgresql://[^\s]+'
+    action: block
+
+  - id: redis_password
+    type: regex
+    pattern: 'redis://:[^@]+@'
+    action: block
+```
+
+#### Project Policy (`examples/my-project-policy.yaml`)
+```yaml
+version: 1
+
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml
+  - ~/.cloakmcp/policies/team-backend.yaml
+
+globals:
+  default_action: redact  # Override company default
+
+detection:
+  - id: project_api_token
+    type: regex
+    pattern: '\bPROJ-[A-Z0-9]{24}\b'
+    action: block
+
+  # Override parent rule
+  - id: internal_email
+    type: regex
+    pattern: '[a-z0-9_.+\-]+@company\.com'
+    action: redact  # Override company's 'pseudonymize'
+```
+
+### Policy Management Commands
+
+#### Validate Policy (with inheritance)
+```bash
+$ cloak policy validate --policy examples/my-project-policy.yaml
+✓ Policy is valid: examples/my-project-policy.yaml
+  Inheritance chain:
+    1. /home/user/.cloakmcp/policies/company-baseline.yaml
+    2. /home/user/.cloakmcp/policies/team-backend.yaml
+    3. /home/user/projects/myapp/examples/my-project-policy.yaml
+  Total detection rules: 20
+```
+
+#### Show Merged Policy
+```bash
+# Show final merged policy (after inheritance)
+cloak policy show --policy examples/my-project-policy.yaml --format yaml
+
+# Export as JSON for programmatic use
+cloak policy show --policy examples/my-project-policy.yaml --format json
+```
+
+### Setup: Organization-Wide Policies
+
+```bash
+# 1. Create global policies directory
+mkdir -p ~/.cloakmcp/policies
+
+# 2. Deploy company baseline (via Git or internal package)
+curl -o ~/.cloakmcp/policies/company-baseline.yaml \
+  https://internal.company.com/security/cloakmcp-policy.yaml
+
+# Or clone from internal Git repo
+git clone git@company.com:security/cloakmcp-policies.git ~/.cloakmcp/policies/
+
+# 3. Projects reference company policy
+cat > my-project-policy.yaml <<EOF
+version: 1
+inherits:
+  - ~/.cloakmcp/policies/company-baseline.yaml
+EOF
+
+# 4. Use as normal
+cloak pack --policy my-project-policy.yaml --dir .
+```
+
+### Merging Rules
+
+When policies inherit from multiple parents:
+
+1. **Globals**: Later values override earlier values
+2. **Detection rules**: Rules with same `id` are replaced, others are appended
+3. **Whitelist/blacklist**: Lists are concatenated (no deduplication)
+4. **Order matters**: Last policy in `inherits` list has highest precedence
+
+**Example**:
+```yaml
+inherits:
+  - company-baseline.yaml    # Applied first
+  - team-backend.yaml        # Overrides company rules
+  # Current file rules       # Overrides all parents (highest precedence)
+```
+
+### Security Model
+
+**Q: Does group policy share encryption keys?**
+**A**: No. Policies share **detection rules** (patterns, actions), NOT vault keys. Each project maintains its own unique encryption key in `~/.cloakmcp/keys/<project-slug>.key`.
+
+**Q: Where are policies stored?**
+**A**:
+- **Company/team policies**: `~/.cloakmcp/policies/` (outside project directories)
+- **Project policies**: Inside project (e.g., `examples/mcp_policy.yaml`)
+- **Vaults (with secrets)**: `~/.cloakmcp/vaults/` (never shared)
+
+**Q: Can I use relative paths in `inherits`?**
+**A**: Yes. Relative paths are resolved relative to the current policy file's directory. Tilde (`~`) is expanded to home directory.
+
+### Best Practices
+
+1. **Version control company policies**: Use Git to distribute baseline policies across org
+2. **Keep team policies DRY**: Inherit from company baseline, only add team-specific rules
+3. **Document overrides**: Comment why project policies override parent rules
+4. **Test inheritance**: Use `cloak policy validate` to see full inheritance chain
+5. **Avoid deep nesting**: Keep inheritance to 3 levels max (company → team → project)
+
+**📖 Full guide**: See [`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md) for implementation details.
+
+---
+
 ## 🖥️ VS Code Integration
 
 CloakMCP includes pre-configured VS Code tasks and keyboard shortcuts.
@@ -985,7 +1176,35 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## 📝 Changelog
 
-### v0.3.1 (2025-11-11) — Security Hardening Release
+### v0.3.2 (2025-11-12) — Group Policy Inheritance
+
+**Added**:
+- **Group policy inheritance**: Hierarchical policy loading (company → team → project)
+- **Policy management commands**: `cloak policy validate` and `cloak policy show`
+- **Cycle detection**: Prevent circular policy inheritance
+- **Deep policy merging**: Later policies override earlier ones with clear precedence rules
+- **Path resolution**: Tilde expansion and relative path support for `inherits` field
+
+**Features**:
+- Policies can inherit from multiple parents using `inherits` field
+- Inheritance chain tracking for debugging (shows full policy ancestry)
+- Merged policy export in YAML or JSON format
+- Example policies demonstrating 3-level hierarchy (company/team/project)
+
+**Security**:
+- Policies share **detection rules** only, NOT encryption keys
+- Each project maintains unique vault key (local-first model preserved)
+- No remote vault server required for policy distribution
+
+**Documentation**:
+- Added comprehensive Group Policies section to README
+- Created GROUP_POLICY_IMPLEMENTATION.md with implementation details
+- Example policy files: company-baseline.yaml, team-backend.yaml, project-with-inheritance.yaml
+
+**Fixed**:
+- Path resolution bug: tilde expansion now occurs before absolute path check
+
+### v0.3.1 (2025-11-12) — Security Hardening Release
 
 **BREAKING CHANGES**:
 - Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256. **Existing vaults are incompatible** with v0.3.1. Backup your vaults before upgrading.

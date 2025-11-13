@@ -1,7 +1,8 @@
 # CLAUDE.md
-**Project:** CloakMCP v2 — Micro-Cleanse Preprocessor (Local Secret & PII Removal + Vaulted Re-injection)
+**Project:** CloakMCP v0.3.2 — Micro-Cleanse Preprocessor (Local Secret & PII Removal + Vaulted Re-injection)
 **Maintainer:** Olivier Vitrac (Adservio Innovation Lab)
 **Date:** November 2025
+**Version:** 0.3.2-alpha
 
 ---
 
@@ -12,7 +13,8 @@ CloakMCP is a **local-first anonymization layer** designed to protect secrets, c
 It provides:
 - 🔒 **Deterministic, reversible redaction** using an encrypted *vault* stored outside the project;
 - ⚙️ **Policy-driven scanning** (regex / entropy / IP / URL / email / JWT / SSH keys / certificates …);
-- 📦 **Batch “pack” and “unpack” modes** to anonymize or restore whole codebases;
+- 🏢 **Group policy inheritance** (company → team → project) for organizational compliance (v0.3.2);
+- 📦 **Batch "pack" and "unpack" modes** to anonymize or restore whole codebases;
 - 🧩 Optional localhost REST API for integration in IDEs or automated pipelines.
 
 The system guarantees that an external LLM **never sees the true secrets** and that the original content can be **reconstructed safely and deterministically** afterwards.
@@ -63,6 +65,8 @@ This restores all secrets safely using the encrypted local vault.
 | `cloak sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot).                       |
 | `cloak pack --policy POL --dir DIR`                     | Replace secrets by deterministic tags across directory.  |
 | `cloak unpack --dir DIR`                                | Restore original secrets from local vault.               |
+| `cloak policy validate --policy POL`                    | Validate policy file (including inheritance chain).      |
+| `cloak policy show --policy POL [--format yaml|json]`   | Show merged policy after inheritance resolution.         |
 | `cloak server` (via uvicorn)                            | Optional localhost REST API (`127.0.0.1:8765/sanitize`). |
 
 ---
