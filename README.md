@@ -1,4 +1,7 @@
 <div align="center">
+<p align="center">
+  <img src="assets/cloakMCP-logo.png" alt="cloackMCP Logo" height="128"><br>
+</p>
 
 # 🔒 CloakMCP
 
