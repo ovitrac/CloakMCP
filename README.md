@@ -13,6 +13,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.3.2--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
+[![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 [Features](#-features) • [Security](#-security-architecture) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Documentation](#-documentation) • [Contributing](#-contributing)
