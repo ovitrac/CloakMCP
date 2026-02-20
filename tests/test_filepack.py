@@ -4,9 +4,9 @@ import os
 import tempfile
 import pytest
 
-from mcp.filepack import TAG_RE, pack_text, unpack_text, pack_file, unpack_file
-from mcp.policy import Policy
-from mcp.storage import Vault
+from cloakmcp.filepack import TAG_RE, pack_text, unpack_text, pack_file, unpack_file
+from cloakmcp.policy import Policy
+from cloakmcp.storage import Vault
 
 
 POLICY_PATH = "examples/mcp_policy.yaml"

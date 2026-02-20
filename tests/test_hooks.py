@@ -1,10 +1,10 @@
-"""Tests for mcp.hooks — Claude Code hook handlers."""
+"""Tests for cloakmcp.hooks — Claude Code hook handlers."""
 from __future__ import annotations
 import json
 import os
 import pytest
 
-from mcp.hooks import (
+from cloakmcp.hooks import (
     SESSION_STATE_FILE,
     handle_session_start,
     handle_session_end,
@@ -14,10 +14,15 @@ from mcp.hooks import (
     _read_state,
     _remove_state,
 )
-from mcp.storage import Vault
+from cloakmcp.storage import Vault
 
 
-POLICY_PATH = "examples/mcp_policy.yaml"
+# Absolute path to the policy (works regardless of CWD)
+POLICY_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "examples",
+    "mcp_policy.yaml",
+)
 
 
 # ── State marker ────────────────────────────────────────────────
@@ -50,7 +55,7 @@ class TestSessionStart:
         secret_file = tmp_path / "secret.txt"
         secret_file.write_text("Email: alice@example.org\n")
 
-        # Point policy env to our test policy
+        # Point policy env to our test policy (absolute path)
         monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
 
         result = handle_session_start(str(tmp_path))
@@ -76,13 +81,10 @@ class TestSessionStart:
 
     def test_missing_policy_warns(self, tmp_path, monkeypatch):
         monkeypatch.delenv("CLOAK_POLICY", raising=False)
-        # Ensure default policy doesn't exist from tmp_path perspective
-        old_cwd = os.getcwd()
+        # chdir to tmp so default policy path doesn't exist
         monkeypatch.chdir(tmp_path)
-        try:
-            result = handle_session_start(str(tmp_path))
-        finally:
-            monkeypatch.chdir(old_cwd)
+
+        result = handle_session_start(str(tmp_path))
 
         assert "additionalContext" in result
         assert "No policy file found" in result["additionalContext"]

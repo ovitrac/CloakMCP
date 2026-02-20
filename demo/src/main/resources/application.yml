@@ -1,0 +1,47 @@
+# ============================================================================
+# Demo Spring Boot YAML config — FAKE credentials for CloakMCP demo
+# ============================================================================
+# This file demonstrates that CloakMCP detects secrets in YAML configs too.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://10.12.34.56:5432/payments
+    username: payments_admin@internal.company
+    password: P@ssw0rd-FAKE-DoNotUse
+    driver-class-name: org.postgresql.Driver
+  mail:
+    host: smtp.internal.company.local
+    port: 587
+    username: no-reply@internal.company
+    password: smtp-FAKE-secret-1234567890
+
+payments:
+  gateway:
+    api-key: sk_live_51Jd9FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE
+    endpoint: https://api.gateway.internal.company.local/v2/transfers
+    webhook-secret: whsec_FAKEFAKEFAKEFAKEFAKEFAKEFAKE
+  hsm:
+    key-id: "hsm-key-prod-01:slot-7:pin=8921"
+  compliance:
+    officer-email: compliance.officer@internal.company
+    alert-endpoint: https://compliance.internal.company.local/api/alerts
+
+aws:
+  access-key: AKIAIOSFODNN7EXAMPLE
+  secret-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  s3:
+    bucket: acme-transfers-audit-prod
+    region: eu-west-1
+
+jwt:
+  signing-key: s3cr3t-jwt-k3y-d0-n0t-l34k-this-value-ever
+  issuer: https://auth.internal.company.local
+  audience: transfer-service
+
+ops:
+  webhook:
+    url: https://ops.internal.company.local/webhooks/transfer
+    secret: whsec_FAKEFAKEFAKEFAKEFAKEFAKEFAKE
+  pagerduty:
+    integration-key: pdkey_FAKEFAKEFAKEFAKEFAKE
+    service-email: oncall-payments@internal.company

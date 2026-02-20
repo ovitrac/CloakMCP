@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cloakmcp": {
+      "type": "stdio",
+      "command": "cloak-mcp-server",
+      "env": {
+        "CLOAK_POLICY": "examples/mcp_policy.yaml"
+      }
+    }
+  }
+}

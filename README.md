@@ -1,154 +1,312 @@
 <div align="center">
 <p align="center">
-  <img src="assets/cloakMCP-logo.png" alt="cloackMCP Logo" height="128"><br>
+  <img src="assets/cloakMCP-logo.png" alt="CloakMCP Logo" height="128"><br>
 </p>
 
-# 🔒 CloakMCP
+# CloakMCP
 
-### Micro-Cleanse Preprocessor — Local Secret Removal
+### Your secrets stay home. The AI only sees tags.
 
-**Protect your secrets before sharing code with LLMs**
+**Local-first secret sanitization before LLM exposure — with automatic restoration**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.3.3-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.5.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen.svg)](./tests)
+[![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#claude-code-integration)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[Features](#-features) • [Security](#-security-architecture) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[See It Work](#see-it-work) • [Features](#features) • [Claude Code Integration](#claude-code-integration) • [Quick Start](#quick-start) • [Demo](#live-demo) • [Security](#security-architecture) • [Documentation](#documentation)
 
 </div>
 
 ---
 
-## ⚡ 2-Minute Quick Start
+## See It Work
 
-**Try CloakMCP in under 2 minutes:**
+Every time you paste code into an LLM, your secrets go with it:
 
-```bash
-# 1. Install (30 seconds)
-git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-
-# 2. Setup (30 seconds)
-mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
-
-# 3. Test (1 minute)
-# Create a test file with a fake secret
-echo "API_KEY=sk_live_abc123xyz456" > test.py
-
-# Sanitize it
-cloak sanitize --policy examples/mcp_policy.yaml --input test.py --output -
-
-# Output: API_KEY=<REDACTED:generic_secret>
-# ✅ Secret removed! Original stays safe in your file.
+```java
+private static final String API_KEY  = "sk_live_51Jd9RealKeyGoesHere";
+private static final String DB_PASS  = "P@ssw0rd-Pr0duction!";
+private static final String AWS_KEY  = "AKIAIOSFODNN7REALKEY1";
 ```
 
-**Next**: See [Quick Start](#-quick-start) for full workflows with pack/unpack.
+**CloakMCP intercepts — automatically, invisibly — before the LLM ever sees your code:**
+
+```
+ YOUR MACHINE                              LLM (Claude, Codex, Copilot…)
+ ────────────                              ──────────────────────────────
+
+ API_KEY = "sk_live_51Jd9RealKey"          API_KEY = "TAG-d7182d9e703d"
+ DB_PASS = "P@ssw0rd-Pr0duction!"         DB_PASS = "TAG-a6c0cd73627c"
+ AWS_KEY = "AKIAIOSFODNN7REALKEY1"         AWS_KEY = "TAG-f63caf98581a"
+```
+
+The LLM understands the code perfectly — it just can't see the secrets:
+
+```
+ You → Claude:   "Which variable stores the database password?"
+
+ Claude:         "DB_PASS on line 27 stores the credential TAG-a6c0cd73627c.
+                  It's used in the JDBC connection to the PostgreSQL instance."
+
+ You → CloakMCP: cloak unpack
+
+ Result:          TAG-a6c0cd73627c → P@ssw0rd-Pr0duction!   ← restored locally
+```
+
+**Claude identified the right variable, understood the architecture, explained the data flow — but the actual password never left your machine.** One command brings it back.
+
+With Claude Code hooks, the entire cycle is **automatic**: secrets vanish at session start, reappear at session end. Zero human intervention.
 
 ---
 
-## 📖 Overview
+## Overview
 
-**CloakMCP** is a **local-first, deterministic sanitizer** that removes or neutralizes secrets (emails, IPs, URLs, tokens, API keys, PII) **before** your text/code is sent to LLMs like Claude, GitHub Copilot, or OpenAI Codex.
+**CloakMCP** is a **local-first, deterministic sanitizer** that removes or neutralizes secrets (emails, IPs, URLs, tokens, API keys, SSH keys, JWTs) **before** your text/code reaches LLMs like Claude, GitHub Copilot, or OpenAI Codex.
 
-### Why CloakMCP?
+### What makes CloakMCP different
 
-- 🔐 **Local-first**: All operations run on your machine — no cloud dependencies
-- 🔄 **Reversible**: Deterministic tagging allows safe restoration via encrypted vaults
-- 📦 **Batch processing**: Pack/unpack entire codebases with one command
-- ⚙️ **Policy-driven**: Configure detection rules via YAML (regex, entropy, IPs, URLs)
-- 🏢 **Group policies**: Hierarchical policy inheritance (company → team → project)
-- 🔍 **Auditable**: Every operation logged to `audit/audit.jsonl`
-- 🚀 **LLM-ready**: Designed for safe collaboration with AI coding assistants
-- 💻 **VS Code integrated**: One-keystroke sanitization with `Ctrl+Alt+S`
+| Feature | CloakMCP | ggshield / gitleaks | SOPS | DIY Scripts |
+|---------|----------|---------------------|------|-------------|
+| **Detect secrets** | Yes | Yes | No | Yes |
+| **Reversible redaction** | Yes | No | No | No |
+| **LLM-optimized workflow** | Yes | No | No | No |
+| **MCP tool server** | Yes (6 tools) | No | No | No |
+| **Claude Code hooks** | Yes (auto pack/unpack) | No | No | No |
+| **Deterministic tags** | Yes (HMAC-based) | No | No | Varies |
+| **Local-only vault** | Yes | No | No (cloud KMS) | Varies |
+| **Directory pack/unpack** | Yes | No | No | No |
+| **Encrypted storage** | Yes (AES-128 Fernet) | No | Yes (cloud KMS) | Varies |
+| **IDE integration** | Yes (VS Code) | Yes | No | No |
 
-### Use Cases
+### Key Capabilities
 
-- ✅ Share code with LLMs without exposing credentials
-- ✅ Pre-commit hooks to prevent secret leaks
-- ✅ Sanitize logs before uploading to issue trackers
-- ✅ Anonymize customer data in demos/screenshots
-- ✅ CI/CD pipelines with encrypted secret management
-
-### Comparison with Existing Tools
-
-| Feature | CloakMCP | ggshield/gitleaks | SOPS | DIY Scripts |
-|---------|----------|-------------------|------|-------------|
-| **Detect secrets** | ✅ | ✅ | ❌ | ✅ |
-| **Reversible redaction** | ✅ | ❌ | ❌ | ❌ |
-| **LLM-optimized workflow** | ✅ | ❌ | ❌ | ❌ |
-| **Deterministic tags** | ✅ (HMAC-based) | ❌ | ❌ | Varies |
-| **Local-only vault** | ✅ | ❌ | ❌ (cloud KMS) | Varies |
-| **Directory pack/unpack** | ✅ | ❌ | ❌ | ❌ |
-| **Encrypted storage** | ✅ (AES-128 Fernet) | ❌ | ✅ (cloud KMS) | Varies |
-| **IDE integration** | ✅ (VS Code) | ✅ | ❌ | ❌ |
-
-**When to use CloakMCP**:
-- ✅ You're sharing code with LLMs (Claude, Codex, Copilot) and need to restore secrets later
-- ✅ You need **reversible** secret redaction for development workflows
-- ✅ You want **local-only** secret storage (no cloud dependencies)
-
-**When to use ggshield/gitleaks**:
-- ✅ You only need detection/blocking (no restoration required)
-- ✅ You want pre-commit hooks with extensive pattern databases
-
-**When to use SOPS**:
-- ✅ You need cloud KMS integration for infrastructure secrets
-- ✅ You're managing secrets in production environments (Kubernetes, AWS)
+- **Local-first**: All operations run on your machine — no cloud dependencies
+- **Reversible**: Deterministic tagging allows safe restoration via encrypted vaults
+- **Transparent**: Claude Code hooks pack/unpack automatically at session start/end
+- **MCP-native**: 6 tools exposed via Model Context Protocol for Claude Code
+- **Batch processing**: Pack/unpack entire codebases with one command
+- **Policy-driven**: Configure detection rules via YAML (regex, entropy, IPs, URLs)
+- **Group policies**: Hierarchical policy inheritance (company → team → project)
+- **Auditable**: Every operation logged to `audit/audit.jsonl`
 
 ---
 
-## 🎯 Features
+## Claude Code Integration
 
-### Core Features
+CloakMCP integrates natively with Claude Code through **two complementary mechanisms**:
 
-| Feature                      | Description                                                  |
-| ---------------------------- | ------------------------------------------------------------ |
-| **Scan**                     | Detect secrets without modification (audit mode)             |
-| **Sanitize**                 | Replace secrets with tags, hashes, or pseudonyms             |
-| **Pack/Unpack**              | Batch-process entire directories with encrypted vault storage|
-| **Policy Engine**            | YAML-based rules for detection and actions                   |
-| **Group Policies**           | Hierarchical policy inheritance with cycle detection         |
-| **Encrypted Vaults**         | AES-128 (Fernet) encryption for reversible secret storage    |
-| **Deterministic Tags**       | HMAC-based tags: same secret → same tag (cryptographically secure) |
-| **VS Code Integration**      | Keyboard shortcuts and tasks for seamless workflow           |
-| **Local API Server**         | Optional FastAPI server for IDE extensions                   |
-| **Audit Logging**            | JSONL logs with timestamps, rule IDs, and value hashes       |
+### 1. Hooks — Automatic Session Protection
+
+When Claude Code starts a session, CloakMCP **automatically packs** all files. When it ends, it **automatically unpacks**. Zero manual steps.
+
+```
+ Claude Code starts  →  SessionStart hook  →  cloak pack   (secrets → tags)
+ Claude works on code →  MCP tools available (6 tools)
+ Claude Code exits   →  SessionEnd hook    →  cloak unpack (tags → secrets)
+```
+
+**Configuration** (`.claude/settings.local.json`):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup",
+      "hooks": [{"type": "command", "command": ".claude/hooks/cloak-session-start.sh"}]
+    }],
+    "SessionEnd": [{
+      "hooks": [{"type": "command", "command": ".claude/hooks/cloak-session-end.sh"}]
+    }],
+    "PreToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{"type": "command", "command": ".claude/hooks/cloak-guard-write.sh"}]
+    }]
+  }
+}
+```
+
+The **PreToolUse guard** also scans any content Claude tries to write — and warns if raw secrets appear in generated code.
+
+### 2. MCP Tool Server — 6 Tools for Claude
+
+CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over stdio). Claude Code discovers them automatically:
+
+| Tool | Description |
+|------|-------------|
+| `cloak_scan_text` | Scan text for secrets (returns matches without modifying) |
+| `cloak_pack_text` | Replace secrets with vault tags in text |
+| `cloak_unpack_text` | Restore vault tags to original secrets |
+| `cloak_vault_stats` | Get vault statistics (total secrets, unique tags) |
+| `cloak_pack_dir` | Pack entire directory |
+| `cloak_unpack_dir` | Unpack entire directory |
+
+**Configuration** (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "cloakmcp": {
+      "type": "stdio",
+      "command": "cloak-mcp-server",
+      "env": { "CLOAK_POLICY": "examples/mcp_policy.yaml" }
+    }
+  }
+}
+```
+
+---
+
+## Features
 
 ### Detectors
 
-- 🔑 **AWS keys** (`AKIA*`, `ASIA*`)
-- 🔑 **GCP API keys** (`AIza*`)
-- 🔑 **JWT tokens** (3-part base64)
-- 🔑 **SSH private keys** (PEM blocks)
-- 🔑 **X.509 certificates** (PEM blocks)
-- 📧 **Email addresses** (with whitelist support)
-- 🌐 **URLs** (HTTP/HTTPS)
-- 🖧 **IP addresses** (IPv4/IPv6 with CIDR whitelists)
-- 🎲 **High-entropy strings** (base64-like tokens)
-- 🔧 **Custom regex patterns** (user-defined)
+| Type | Examples | Action |
+|------|----------|--------|
+| AWS keys | `AKIA*`, `ASIA*` | block |
+| JWT tokens | 3-part base64 | pseudonymize |
+| SSH private keys | PEM blocks | replace |
+| X.509 certificates | PEM blocks | block |
+| Email addresses | with whitelist support | replace_with_template |
+| URLs | HTTP/HTTPS (internal) | pseudonymize |
+| IP addresses | IPv4/IPv6 with CIDR whitelists | pseudonymize |
+| High-entropy strings | base64-like tokens | redact |
+| Custom regex | user-defined patterns | configurable |
 
 ### Actions
 
-- **`block`**: Refuse to process (exit with error)
-- **`redact`**: Replace with `<REDACTED:rule_id>`
-- **`pseudonymize`**: Replace with HMAC-based token (`PZ-xxxxx`)
-- **`hash`**: Replace with SHA-256 hash
-- **`replace_with_template`**: Use custom template (e.g., `<EMAIL:{hash8}>`)
-- **`allow`**: Keep unchanged (whitelist)
+| Action | Behavior | Reversible |
+|--------|----------|------------|
+| `block` | Refuse to process (exit with error) | — |
+| `redact` | Replace with `<REDACTED:rule_id>` | No |
+| `pseudonymize` | Replace with HMAC-based token (`TAG-xxxxxxxxxxxx`) | Yes (vault) |
+| `hash` | Replace with SHA-256 hash | No |
+| `replace_with_template` | Custom template (e.g., `<EMAIL:{hash8}>`) | No |
+| `allow` | Keep unchanged (whitelist) | — |
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `cloak scan --policy POL --input FILE` | Scan file, log detections (no modification) |
+| `cloak sanitize --policy POL --input FILE --output OUT` | Sanitize a single file (one-shot) |
+| `cloak pack --policy POL --dir DIR` | Replace secrets by deterministic tags across directory |
+| `cloak unpack --dir DIR` | Restore original secrets from local vault |
+| `cloak policy validate --policy POL` | Validate policy file (including inheritance chain) |
+| `cloak policy show --policy POL` | Show merged policy after inheritance resolution |
+| `cloak hook <event>` | Handle Claude Code hooks (session-start, session-end, guard-write) |
+| `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio) |
 
 ---
 
-## 🔒 Security Architecture
+## Live Demo
+
+The `demo/` directory contains a realistic Spring Boot banking microservice with 10+ fake secrets across 3 config files. Four demo scripts showcase different aspects:
+
+### LLM Demo — The Highlight
+
+Packs the code, asks a **real LLM** to explain it, proves the AI understands the logic without seeing secrets:
+
+```bash
+cd demo && bash llm_demo.sh              # auto-detect (Ollama / Claude)
+cd demo && bash llm_demo.sh --ollama     # force local Ollama
+cd demo && bash llm_demo.sh --claude     # force Claude Code CLI
+```
+
+<details>
+<summary><b>Sample output — Qwen2.5-coder explains cloaked banking code</b></summary>
+
+```
+▶ Asking Ollama (qwen2.5-coder:14b) to explain the cloaked code...
+
+  This class simulates a high-value transfer workflow in a banking service.
+  It initiates the transfer by performing risk and compliance checks,
+  creating a transfer intent, signing it, and calling a payment gateway.
+  The process involves persisting data to a database, sending confirmation
+  emails, notifying operations via a webhook, and archiving an audit trail.
+
+The LLM understood 8 workflow steps, compliance logic, and integrations
+— zero real credentials seen.
+```
+
+</details>
+
+### MCP Protocol Demo
+
+Shows CloakMCP as an **MCP tool server** with raw JSON-RPC protocol:
+
+```bash
+cd demo && bash mcp_demo.sh              # raw JSON-RPC protocol (5 steps)
+cd demo && bash mcp_demo.sh --claude     # + full hook lifecycle with live LLM
+```
+
+With `--claude`, demonstrates the complete transparent lifecycle:
+1. **SessionStart hook** fires → `cloak pack` (automatic)
+2. An LLM **explains the cloaked code** — sees only TAG-xxxx tokens
+3. **SessionEnd hook** fires → `cloak unpack` (automatic)
+
+### Other Demos
+
+```bash
+cd demo && bash transcript.sh            # screenshot-friendly before/after (6 phases)
+cd demo && bash run_demo.sh              # interactive 5-act presentation
+```
+
+**Full demo documentation**: See [`demo/README.md`](demo/README.md)
+
+---
+
+## Quick Start
+
+### 1. Install
+
+```bash
+git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+```
+
+### 2. Setup Keys
+
+```bash
+mkdir -p keys audit
+openssl rand -hex 32 > keys/mcp_hmac_key
+chmod 600 keys/*
+```
+
+### 3. Pack / Unpack (Recommended Workflow)
+
+```bash
+# Pack: replace secrets with tags (vaulted, reversible)
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+
+# Now safe to share with LLMs — secrets replaced with TAG-xxxxxxxxxxxx
+# Vault stored in ~/.cloakmcp/vaults/
+
+# Unpack: restore original secrets
+cloak unpack --dir .
+```
+
+### 4. Claude Code Setup
+
+```bash
+# The repo already includes .mcp.json and .claude/hooks/
+# Just start Claude Code in the project directory:
+claude
+
+# CloakMCP hooks fire automatically:
+#   SessionStart → pack (secrets hidden)
+#   SessionEnd   → unpack (secrets restored)
+```
+
+---
+
+## Security Architecture
 
 ### How CloakMCP Protects Your Secrets
-
-CloakMCP ensures that **secrets never leave your local machine**. Here's how:
-
-#### Where Secrets Are Stored
 
 ```mermaid
 graph TB
@@ -175,47 +333,59 @@ graph TB
     style H fill:#ccccff, color:#000000
 ```
 
-**Key Points**:
-- 🔐 **Vault location**: `~/.cloakmcp/vaults/<project-slug>.vault`
-- 🔑 **Keys location**: `~/.cloakmcp/keys/<project-slug>.key`
-- 📦 **Encryption**: AES-128 (Fernet) symmetric encryption
-- 🚫 **Never committed**: Vaults and keys stay outside git repository
-- 🏷️ **Tags in code**: HMAC-based deterministic identifiers like `TAG-2f1a8e3c9b12` (keyed with vault key)
-
-#### Why LLMs Cannot Access Secrets
+### Why LLMs Cannot Access Secrets
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
+    participant Hook as Claude Code Hook
     participant MCP as CloakMCP
     participant Vault as Encrypted Vault<br/>(~/.cloakmcp/)
-    participant LLM as LLM (Claude/Codex)
+    participant LLM as Claude Code
 
-    Dev->>MCP: cloak pack --dir /project
+    Note over Hook: SessionStart fires
+    Hook->>MCP: cloak pack --dir .
     MCP->>MCP: Scan for secrets
     MCP->>Vault: Store secret → TAG mapping (encrypted)
-    MCP->>Dev: Code with tags (TAG-xxxx)
+    MCP->>Dev: Files now contain tags (TAG-xxxx)
 
-    Dev->>LLM: Share tagged code
-    Note over LLM: LLM sees: TAG-2f1a8e3c9b12<br/>NOT: sk_live_abc123xyz
+    Dev->>LLM: Work on tagged code
+    Note over LLM: LLM sees: TAG-a6c0cd73627c<br/>NOT: P@ssw0rd-Pr0duction!
 
     LLM->>Dev: Modified code (tags preserved)
-    Dev->>MCP: cloak unpack --dir /project
-    MCP->>Vault: Retrieve secret for TAG-xxxx
-    Vault->>MCP: Decrypted secret
-    MCP->>Dev: Code with original secrets
+    Note over Hook: SessionEnd fires
+    Hook->>MCP: cloak unpack --dir .
+    MCP->>Vault: Retrieve secret for each TAG
+    Vault->>MCP: Decrypted secrets
+    MCP->>Dev: Files restored with original secrets
 ```
 
-**Security Properties**:
+### Vault Architecture
+
+```
+~/.cloakmcp/
+├── keys/
+│   └── <project-slug>.key        # Fernet encryption key (AES-128, 600 perms)
+└── vaults/
+    └── <project-slug>.vault      # Encrypted JSON mapping {TAG → secret}
+```
+
+- **Slug**: 16-character SHA-256 prefix of project's absolute path
+- **Encryption**: AES-128 via `cryptography.Fernet`
+- **Permissions**: 0600 (owner read/write only)
+- **Portability**: Copy `.key` and `.vault` to share between machines
+
+### Security Properties
+
 1. **Vault is local-only** — Never uploaded to git, cloud, or LLM
-2. **HMAC-based tags** — Tags use HMAC-SHA256 with vault key; cannot reverse `TAG-2f1a8e3c9b12` → original secret without vault key
-3. **Brute-force resistant** — Even with tag and candidate secret, attacker needs vault key to verify guesses
+2. **HMAC-based tags** — Tags use HMAC-SHA256 with vault key; cannot reverse without vault key
+3. **Brute-force resistant** — Even with tag and candidate secret, attacker needs vault key to verify
 4. **Encryption protects vault** — Even if vault file leaks, attacker needs encryption key
 5. **Keys are separate** — Vault + key both required for decryption
 
 ### Data Flow Comparison
 
-#### Without CloakMCP ❌
+#### Without CloakMCP
 ```mermaid
 graph LR
     A[Code with Secrets] -->|sent directly| B[LLM Provider]
@@ -224,10 +394,10 @@ graph LR
 ```
 **Risk**: Secrets permanently stored on provider servers
 
-#### With CloakMCP ✅
+#### With CloakMCP
 ```mermaid
 graph LR
-    A[Code with Secrets] -->|cloak pack| B[Code with Tags]
+    A[Code with Secrets] -->|hooks / cloak pack| B[Code with Tags]
     B -->|safe to send| C[LLM Provider]
     C -->|only sees tags| D[Provider Database]
     A -.secrets stay local.-> E[Encrypted Vault<br/>~/.cloakmcp/]
@@ -236,256 +406,25 @@ graph LR
 ```
 **Protection**: Only meaningless tags reach provider
 
-### CLI vs Server Mode
-
-#### CLI Mode (Local Processing)
-```mermaid
-graph TB
-    subgraph "Your Machine"
-        A[File with Secrets] -->|cloak sanitize| B[Policy Engine]
-        B --> C[Scanner]
-        C --> D[Action Engine]
-        D --> E[Sanitized Output]
-    end
-
-    E -.copy/paste.-> F[LLM Chat]
-```
-**Use case**: Manual sanitization before copy/paste to LLM
-
-#### Server Mode (IDE Integration)
-```mermaid
-graph TB
-    subgraph "Your Machine"
-        A[VS Code] -->|HTTP 127.0.0.1:8765| B[MCP Server]
-        B --> C[Policy Engine]
-        C --> D[Action Engine]
-        D -->|sanitized| A
-    end
-
-    A -.safe to send.-> E[LLM API]
-
-    style B fill:#ffffcc
-```
-**Use case**: Automatic sanitization in IDE before sending to LLM API
-
-**Important**: Server binds to `127.0.0.1` (localhost) — no network exposure
-
-### Vault Security Model
-
-| Component | Location | Format | Access |
-|-----------|----------|--------|--------|
-| **Original Secrets** | Your files | Plaintext | You only (before pack) |
-| **Encrypted Vault** | `~/.cloakmcp/vaults/` | AES-128 Fernet | You only (local filesystem) |
-| **Encryption Key** | `~/.cloakmcp/keys/` | Binary (Fernet) | You only (600 permissions) |
-| **Tagged Code** | Git repository | Text files | Safe to share |
-| **LLM View** | LLM provider | Tags only | Cannot reverse to secrets |
-
 ### Common Questions
 
 **Q: Can someone with my git repo see my secrets?**
-**A**: No. Git only contains tags like `TAG-2f1a8e3c9b12`. The vault (with actual secrets) is in `~/.cloakmcp/` on your machine.
+**A**: No. Git only contains tags like `TAG-2f1a8e3c9b12`. The vault is in `~/.cloakmcp/` on your machine.
 
 **Q: What if I lose my vault key?**
-**A**: Secrets are unrecoverable. Keep backups of `~/.cloakmcp/keys/` in a secure location (password manager, encrypted USB).
+**A**: Secrets are unrecoverable. Keep backups of `~/.cloakmcp/keys/` in a secure location.
 
 **Q: Can LLMs guess secrets from tags?**
-**A**: No. Tags are HMAC-SHA256 signatures (keyed with your vault key) truncated to 12 hex chars. Without access to your `~/.cloakmcp/keys/` directory, reversing tags is cryptographically infeasible. Even with the tag, an attacker would need your vault key to verify guesses.
+**A**: No. Tags are HMAC-SHA256 signatures (keyed with your vault key) truncated to 12 hex chars. Without your `~/.cloakmcp/keys/`, reversing tags is cryptographically infeasible.
 
-**Q: Does the API server expose secrets over network?**
-**A**: No. Server binds to `127.0.0.1` (localhost only). Requests never leave your machine. Sanitized output (with tags) can then be sent to LLMs.
-
-**Q: Can I use CloakMCP with remote LLM APIs?**
-**A**: Yes. Sanitize locally first, then send tagged output to API. Example:
-```bash
-cloak sanitize --input code.py --output code.tagged.py --policy mcp_policy.yaml
-curl -X POST https://api.anthropic.com/v1/complete -d @code.tagged.py
-```
+**Q: Does this work with any LLM / protocol?**
+**A**: Yes. CloakMCP operates at the file level (pack/unpack) and at the text level (MCP tools). It works with Claude Code (native hooks + MCP), Copilot, Codex, Gemini, local Ollama models — any LLM that reads your code.
 
 ---
 
-## 🚀 Quick Start
-
-### 1. Install (5 minutes)
-
-```bash
-# Clone repository
-git clone https://github.com/ovitrac/CloakMCP.git
-cd CloakMCP
-
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install package
-pip install -e .
-
-# Verify installation
-cloak --help
-```
-
-### 2. Generate Keys
-
-```bash
-# Create keys directory
-mkdir -p keys audit
-
-# Generate HMAC key (for pseudonymization)
-openssl rand -hex 32 > keys/mcp_hmac_key
-
-# Optional: Generate API token (for server mode)
-openssl rand -hex 32 > keys/mcp_api_token
-
-# Secure permissions
-chmod 600 keys/*
-```
-
-### 3. Test with Example
-
-```bash
-# Create test file with secrets
-cat > test_secrets.py <<EOF
-# Production credentials
-AWS_KEY = "AKIAIOSFODNN7EXAMPLE"
-EMAIL = "admin@company.com"
-DB_URL = "postgresql://user:pass@db.internal.com:5432/mydb"
-EOF
-
-# Scan (detect only, no modification)
-cloak scan --policy examples/mcp_policy.yaml --input test_secrets.py
-
-# Sanitize (preview to terminal)
-cloak sanitize --policy examples/mcp_policy.yaml --input test_secrets.py --output -
-```
-
-**Expected output**:
-```python
-# Production credentials
-AWS_KEY = ""  # BLOCKED (high-risk secret)
-EMAIL = "<EMAIL:a3b2c1d4>"
-DB_URL = "PZ-Gh9Ij1Kl3"
-```
-
-### 4. Pack/Unpack Workflow (Recommended)
-
-```bash
-# Pack: Replace secrets with tags (vaulted)
-cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
-
-# Now safe to share with LLMs (secrets replaced with TAG-xxxxxxxxxxxx)
-# Vault stored securely in ~/.cloakmcp/vaults/
-
-# Unpack: Restore original secrets
-cloak unpack --dir .
-```
-
----
-
-## 📦 Installation
-
-### Prerequisites
-
-- **Python 3.10+**
-- **pip** (Python package manager)
-- **OpenSSL** (for key generation)
-- **Git** (for cloning repository)
-
-### Option 1: From Source (Recommended)
-
-```bash
-git clone https://github.com/yourusername/CloakMCP.git
-cd CloakMCP
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-### Option 2: Direct Install (Future)
-
-```bash
-# Once published to PyPI
-pip install cloakmcp
-```
-
-### Dependencies
-
-Core dependencies (auto-installed):
-- `pyyaml>=6.0.1` — YAML policy parsing
-- `cryptography>=43.0.0` — Vault encryption (Fernet)
-- `fastapi>=0.115.0` — Optional API server
-- `uvicorn>=0.30.0` — ASGI server for API
-- `pydantic>=2.7.0` — Data validation
-
-Development/test dependencies:
-```bash
-pip install -e ".[test]"              # pytest + httpx (for API tests)
-pip install pytest-cov black mypy bandit  # optional extras
-```
-
----
-
-## 🎮 Usage
-
-### CLI Commands
-
-#### `cloak scan`
-
-Scan file for secrets (audit mode, no modification):
-
-```bash
-cloak scan --policy examples/mcp_policy.yaml --input file.py
-```
-
-**Output**: Logs written to `audit/audit.jsonl`
-
-#### `cloak sanitize`
-
-Sanitize file and output result:
-
-```bash
-# Preview to stdout
-cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output -
-
-# Overwrite file (use with caution)
-cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
-
-# Write to new file
-cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.sanitized.py
-```
-
-#### `cloak pack`
-
-Pack directory (replace secrets with tags):
-
-```bash
-cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
-```
-
-**What it does**:
-- Scans all files (respects `.mcpignore`)
-- Replaces secrets with deterministic tags: `TAG-a1b2c3d4e5f6`
-- Stores mapping in encrypted vault: `~/.cloakmcp/vaults/<slug>.vault`
-- Modifies files **in place**
-
-#### `cloak unpack`
-
-Unpack directory (restore secrets from vault):
-
-```bash
-cloak unpack --dir /path/to/project
-```
-
-**What it does**:
-- Finds all tags matching pattern `PREFIX-[0-9a-f]{12}`
-- Looks up original values in vault
-- Restores secrets **in place**
-
----
-
-## ⚙️ Configuration
+## Configuration
 
 ### Policy File (`mcp_policy.yaml`)
-
-Configuration is YAML-based. Example:
 
 ```yaml
 version: 1
@@ -495,112 +434,68 @@ globals:
   audit:
     enabled: true
     path: ./audit/audit.jsonl
-    include_value_hash: true
   pseudonymization:
     method: hmac-sha256
     secret_key_file: ./keys/mcp_hmac_key
-    salt: session  # or 'permanent' for cross-session consistency
 
 detection:
-  # Block high-risk secrets
   - id: aws_access_key
     type: regex
     pattern: '\b(AKIA|ASIA)[A-Z0-9]{16}\b'
     action: block
     severity: high
 
-  # Pseudonymize JWT tokens
   - id: jwt_token
     type: regex
     pattern: '\b[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b'
     action: pseudonymize
 
-  # Replace emails with template
   - id: email
     type: regex
     pattern: '(?i)[a-z0-9_.+-]+@[a-z0-9-]+\.[a-z0-9.-]+'
     action: replace_with_template
     template: '<EMAIL:{hash8}>'
-    whitelist: ['*@example.com']  # Allow company emails
+    whitelist: ['*@example.com']
 
-  # Pseudonymize IPs (with CIDR whitelist)
-  - id: ipv4
-    type: ipv4
-    whitelist_cidrs: ['10.0.0.0/8', '192.168.0.0/16', '172.16.0.0/12']
-    action: pseudonymize
-
-  # Detect high-entropy tokens
   - id: high_entropy_token
     type: entropy
     min_entropy: 4.5
     min_length: 20
     action: redact
-
-# Whitelist (never sanitize)
-whitelist:
-  emails:
-    - '*@public-domain.com'
-  urls:
-    - 'https://public.example.com'
-
-# Blacklist (always block)
-blacklist:
-  emails:
-    - 'secret@internal.company'
-  ips:
-    - '203.0.113.42'
 ```
 
 ### `.mcpignore` File
 
-Control which files are skipped during `pack`/`unpack` (similar to `.gitignore`):
+Controls which files are skipped during `pack`/`unpack` (similar to `.gitignore`):
 
 ```
-# .mcpignore
-
-# Binaries
+# Binaries and build artifacts
 *.pyc
 *.so
-*.dll
-
-# Build artifacts
 dist/
 build/
 __pycache__/
 
 # Virtual environments
 .venv/
-venv/
 node_modules/
 
-# Media files
+# Media
 *.png
 *.jpg
 *.pdf
-*.mp4
 
 # Already sensitive
 audit/
 keys/
-.vscode/
 .git/
 ```
 
 ---
 
-## 🏢 Group Policies
+## Group Policies
 
-**New in v0.3.2+**: Organizations can now define hierarchical security policies that cascade from company -> team -> project level.
-
-### Why Group Policies?
-
-- ✅ **Centralized compliance**: Define organization-wide baseline rules once
-- ✅ **Team customization**: Teams can add specialized rules (backend, frontend, DevOps)
-- ✅ **Project flexibility**: Individual projects can override or extend inherited rules
-- ✅ **Easy distribution**: Share policies via Git repos or internal package managers
-- ✅ **No key sharing**: Policies share RULES (detection patterns), NOT encryption keys
-
-### Architecture
+**New in v0.3.2+**: Hierarchical security policies that cascade from company → team → project.
 
 ```mermaid
 graph TB
@@ -613,784 +508,240 @@ graph TB
     style D fill:#ccccff
 ```
 
-**Key principles**:
-1. Policies share **detection rules**, NOT vault keys
-2. Each project maintains its own **unique vault key**
-3. Later policies **override** earlier ones (for rules with same ID)
-4. Cycle detection prevents circular inheritance
+- Policies share **detection rules**, NOT vault keys
+- Each project maintains its own unique vault key
+- Later policies override earlier ones (same rule ID)
+- Cycle detection prevents circular inheritance
 
-### Example: 3-Level Hierarchy
-
-#### Company Baseline (`~/.cloakmcp/policies/company-baseline.yaml`)
-```yaml
-version: 1
-
-globals:
-  default_action: block
-
-detection:
-  - id: company_api_key
-    type: regex
-    pattern: '\bCOMP-[A-Z0-9]{32}\b'
-    action: block
-
-  - id: aws_access_key
-    type: regex
-    pattern: '\b(AKIA|ASIA)[A-Z0-9]{16}\b'
-    action: block
-
-  - id: internal_email
-    type: regex
-    pattern: '[a-z0-9_.+\-]+@company\.com'
-    action: pseudonymize
-```
-
-#### Team Policy (`~/.cloakmcp/policies/team-backend.yaml`)
-```yaml
-version: 1
-
-inherits:
-  - ~/.cloakmcp/policies/company-baseline.yaml
-
-detection:
-  - id: postgresql_connection
-    type: regex
-    pattern: 'postgresql://[^\s]+'
-    action: block
-
-  - id: redis_password
-    type: regex
-    pattern: 'redis://:[^@]+@'
-    action: block
-```
-
-#### Project Policy (`examples/my-project-policy.yaml`)
-```yaml
-version: 1
-
-inherits:
-  - ~/.cloakmcp/policies/company-baseline.yaml
-  - ~/.cloakmcp/policies/team-backend.yaml
-
-globals:
-  default_action: redact  # Override company default
-
-detection:
-  - id: project_api_token
-    type: regex
-    pattern: '\bPROJ-[A-Z0-9]{24}\b'
-    action: block
-
-  # Override parent rule
-  - id: internal_email
-    type: regex
-    pattern: '[a-z0-9_.+\-]+@company\.com'
-    action: redact  # Override company's 'pseudonymize'
-```
-
-### Policy Management Commands
-
-#### Validate Policy (with inheritance)
 ```bash
-$ cloak policy validate --policy examples/my-project-policy.yaml
-✓ Policy is valid: examples/my-project-policy.yaml
-  Inheritance chain:
-    1. /home/user/.cloakmcp/policies/company-baseline.yaml
-    2. /home/user/.cloakmcp/policies/team-backend.yaml
-    3. /home/user/projects/myapp/examples/my-project-policy.yaml
-  Total detection rules: 20
-```
+# Validate policy chain
+cloak policy validate --policy examples/my-project-policy.yaml
 
-#### Show Merged Policy
-```bash
-# Show final merged policy (after inheritance)
+# Show merged policy after inheritance
 cloak policy show --policy examples/my-project-policy.yaml --format yaml
-
-# Export as JSON for programmatic use
-cloak policy show --policy examples/my-project-policy.yaml --format json
 ```
 
-### Setup: Organization-Wide Policies
-
-```bash
-# 1. Create global policies directory
-mkdir -p ~/.cloakmcp/policies
-
-# 2. Deploy company baseline (via Git or internal package)
-curl -o ~/.cloakmcp/policies/company-baseline.yaml \
-  https://internal.company.com/security/cloakmcp-policy.yaml
-
-# Or clone from internal Git repo
-git clone git@company.com:security/cloakmcp-policies.git ~/.cloakmcp/policies/
-
-# 3. Projects reference company policy
-cat > my-project-policy.yaml <<EOF
-version: 1
-inherits:
-  - ~/.cloakmcp/policies/company-baseline.yaml
-EOF
-
-# 4. Use as normal
-cloak pack --policy my-project-policy.yaml --dir .
-```
-
-### Merging Rules
-
-When policies inherit from multiple parents:
-
-1. **Globals**: Later values override earlier values
-2. **Detection rules**: Rules with same `id` are replaced, others are appended
-3. **Whitelist/blacklist**: Lists are concatenated (no deduplication)
-4. **Order matters**: Last policy in `inherits` list has highest precedence
-
-**Example**:
-```yaml
-inherits:
-  - company-baseline.yaml    # Applied first
-  - team-backend.yaml        # Overrides company rules
-  # Current file rules       # Overrides all parents (highest precedence)
-```
-
-### Security Model
-
-**Q: Does group policy share encryption keys?**
-**A**: No. Policies share **detection rules** (patterns, actions), NOT vault keys. Each project maintains its own unique encryption key in `~/.cloakmcp/keys/<project-slug>.key`.
-
-**Q: Where are policies stored?**
-**A**:
-- **Company/team policies**: `~/.cloakmcp/policies/` (outside project directories)
-- **Project policies**: Inside project (e.g., `examples/mcp_policy.yaml`)
-- **Vaults (with secrets)**: `~/.cloakmcp/vaults/` (never shared)
-
-**Q: Can I use relative paths in `inherits`?**
-**A**: Yes. Relative paths are resolved relative to the current policy file's directory. Tilde (`~`) is expanded to home directory.
-
-### Best Practices
-
-1. **Version control company policies**: Use Git to distribute baseline policies across org
-2. **Keep team policies DRY**: Inherit from company baseline, only add team-specific rules
-3. **Document overrides**: Comment why project policies override parent rules
-4. **Test inheritance**: Use `cloak policy validate` to see full inheritance chain
-5. **Avoid deep nesting**: Keep inheritance to 3 levels max (company → team → project)
-
-**📖 Full guide**: See [`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md) for implementation details.
+**Full guide**: See [`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md)
 
 ---
 
-## 🖥️ VS Code Integration
+## VS Code Integration
 
-CloakMCP includes pre-configured VS Code tasks and keyboard shortcuts.
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Alt+S` | Sanitize current file (preview) |
+| `Ctrl+Alt+A` | Scan current file (audit only) |
 
-### Keyboard Shortcuts
-
-| Shortcut       | Action                            | Description                          |
-| -------------- | --------------------------------- | ------------------------------------ |
-| `Ctrl+Alt+S`   | Sanitize current file (preview)   | Print sanitized output to terminal   |
-| `Ctrl+Alt+A`   | Scan current file (audit only)    | Log detections to `audit/` (silent)  |
-
-### Tasks
-
-Run via Command Palette (`Ctrl+Shift+P` → "Tasks: Run Task"):
-
-1. **MCP: Sanitize current file → preview**
-2. **MCP: Scan current file (audit only)**
-3. **MCP: Sanitize selection via API** (requires server)
-
-### Configuration Files
-
-- `.vscode/keybindings.json` — Keyboard shortcuts
-- `.vscode/tasks.json` — Task definitions
-- `.vscode/settings.json` — Project settings
-
-**📖 Full guide**: See [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md) (24 KB, 1200+ lines)
+**Full guide**: See [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
 
 ---
 
-## 🌐 API Server (Optional)
+## API Server (Optional)
 
-CloakMCP includes an optional FastAPI server for real-time sanitization.
-
-### Start Server
+CloakMCP includes an optional FastAPI server for real-time sanitization:
 
 ```bash
-# Generate API token (once)
 openssl rand -hex 32 > keys/mcp_api_token
-
-# Start server (localhost only)
-uvicorn cloak.server:app --host 127.0.0.1 --port 8765
+uvicorn cloakmcp.server:app --host 127.0.0.1 --port 8765
 ```
 
-### Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Server status and policy hash |
+| `/sanitize` | POST | Sanitize text (modify secrets) |
+| `/scan` | POST | Scan text (audit only) |
 
-| Endpoint     | Method | Description                           |
-| ------------ | ------ | ------------------------------------- |
-| `/health`    | GET    | Server status and policy hash         |
-| `/sanitize`  | POST   | Sanitize text (modify secrets)        |
-| `/scan`      | POST   | Scan text (audit only, no modification)|
-
-All endpoints require **Bearer token** authentication.
-
-### API Documentation
-
-Interactive docs available at: http://127.0.0.1:8765/docs (when server running)
-
-### Example Request
-
-```bash
-TOKEN=$(cat keys/mcp_api_token)
-
-curl -X POST http://127.0.0.1:8765/sanitize \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Email: alice@example.com\nKey: AKIAIOSFODNN7EXAMPLE",
-    "policy_path": "examples/mcp_policy.yaml",
-    "dry_run": false
-  }'
-```
+All endpoints require Bearer token authentication. Server binds to `127.0.0.1` only.
 
 ---
 
-## 🔐 Security & Vaults
-
-### Vault Architecture
-
-```
-~/.cloakmcp/
-├── keys/
-│   └── <project-slug>.key        # Fernet encryption key (AES-128)
-└── vaults/
-    └── <project-slug>.vault      # Encrypted JSON: {TAG → secret}
-```
-
-- **Slug**: 16-character SHA-256 prefix of project's absolute path
-- **Encryption**: AES-128 via `cryptography.Fernet`
-- **Permissions**: 0600 (owner read/write only)
-- **Portability**: Copy `.key` and `.vault` to share between machines
-
-### Security Features
-
-- ✅ **Local-first**: No network calls during sanitization
-- ✅ **Encrypted storage**: Vaults use industry-standard AES-128
-- ✅ **Deterministic**: Same secret → same tag (reproducible)
-- ✅ **Auditable**: All operations logged with timestamps
-- ✅ **Isolated**: Vaults stored outside project directory
-
-### Best Practices
-
-1. **Never commit keys**: Add `keys/` to `.gitignore`
-2. **Backup vaults**: Regularly backup `~/.cloakmcp/` directory
-3. **Rotate keys**: Periodically regenerate HMAC keys
-4. **Use pre-commit hooks**: Automate scanning before commits
-5. **Pack before sharing**: Always `pack` before uploading to LLMs
-6. **Review audit logs**: Check `audit/audit.jsonl` for unexpected detections
-
----
-
-## 🔄 Workflows
-
-### Workflow 1: Safe LLM Code Review
+## Testing
 
 ```bash
-# 1. Pack project (anonymize)
-cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
-
-# 2. Verify secrets removed
-grep -r "AKIA" .  # Should return nothing
-grep -r "TAG-" .  # Should find tags
-
-# 3. Share with Claude/Codex/Copilot
-# (Upload files or paste code)
-
-# 4. Receive reviewed/modified code from LLM
-# (Tags preserved in LLM output)
-
-# 5. Unpack to restore secrets
-cloak unpack --dir .
-
-# 6. Verify restoration
-git diff  # Should show no changes if no edits made
-```
-
-### Workflow 2: Pre-Commit Hook
-
-**`.git/hooks/pre-commit`**:
-
-```bash
-#!/bin/bash
-# CloakMCP pre-commit hook
-
-echo "🔒 CloakMCP: Scanning staged files for secrets..."
-
-for file in $(git diff --cached --name-only --diff-filter=ACM); do
-  if [ -f "$file" ]; then
-    if ! cloak scan --policy examples/mcp_policy.yaml --input "$file"; then
-      echo "❌ Secrets detected in $file. Commit blocked."
-      echo "   Fix: cloak sanitize --policy examples/mcp_policy.yaml --input $file --output $file"
-      exit 1
-    fi
-  fi
-done
-
-echo "✅ No secrets detected. Commit allowed."
-exit 0
-```
-
-Make executable:
-```bash
-chmod +x .git/hooks/pre-commit
-```
-
-### Workflow 3: CI/CD Pipeline
-
-**`.github/workflows/test.yml`**:
-
-```yaml
-name: Test with CloakMCP
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install CloakMCP
-        run: |
-          pip install -e .
-          mkdir -p keys
-          echo "${{ secrets.MCP_HMAC_KEY }}" > keys/mcp_hmac_key
-
-      - name: Pack secrets (anonymize)
-        run: cloak pack --policy examples/mcp_policy.yaml --dir . --prefix CI_TAG
-
-      - name: Run tests
-        run: pytest -v
-
-      # Do NOT unpack in CI (secrets should never be in CI logs)
-```
-
-**⚠️ Important**: Store `MCP_HMAC_KEY` in GitHub Secrets, never in repository.
-
----
-
-## 🧪 Testing
-
-### Run Tests
-
-```bash
-# Install test dependencies
 pip install -e ".[test]"
 
-# Run all tests (performance tests excluded by default)
+# Run all tests (115 passing)
 pytest
 
-# Run all tests including performance tests
-pytest -m ""
-
 # Run with coverage
-pytest --cov=mcp --cov-report=html --cov-report=term
-
-# View coverage report
-xdg-open htmlcov/index.html  # Linux
-open htmlcov/index.html      # macOS
+pytest --cov=cloakmcp --cov-report=term
 ```
 
-### Test Suite
-
-- **90+ tests** across 15 test classes
-- **Target coverage**: 95%
-- **Test categories**:
-  - Unit tests (individual functions)
-  - Integration tests (full workflows)
-  - API tests (FastAPI endpoints)
-  - Edge cases (empty, long, malformed input)
-  - Error handling (missing files, invalid data)
-  - Performance tests (large files, many secrets)
-
-**📖 Full guide**: See [`tests/README.md`](tests/README.md)
+**Test suite**: 115+ tests across 6 test files covering unit tests, integration tests, API tests, hook tests, and MCP server tests.
 
 ---
 
-## 📚 Documentation
-
-| Document                    | Description                                  | Size     |
-| --------------------------- | -------------------------------------------- | -------- |
-| **`README.md`**             | This file (overview and quick start)         | Current  |
-| **`SERVER.md`**             | Server configuration and data storage        | 20 KB    |
-| **`VSCODE_MANUAL.md`**      | Complete VS Code integration guide           | 24 KB    |
-| **`QUICKREF.md`**           | One-page cheat sheet for daily use           | 4 KB     |
-| **`CLAUDE.md`**             | Project specifications (for LLMs)            | —        |
-| **`ISSUES_REPORT.md`**      | Pre-deployment code review findings          | 8 KB     |
-| **`DEPLOYMENT_SUMMARY.md`** | Comprehensive deployment summary             | 15 KB    |
-| **`tests/README.md`**       | Test suite documentation                     | 6 KB     |
-| **`SECURITY.md`**           | Security policy and disclosure               | —        |
-| **`CONTRIBUTING.md`**       | Contribution guidelines                      | —        |
-| **`AUTHORS.md`**            | Credits and authorship                       | —        |
-
----
-
-## 🛠️ Development
-
-### Setup Development Environment
-
-```bash
-# Clone repository
-git clone https://github.com/ovitrac/CloakMCP.git
-cd CloakMCP
-
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install in editable mode with test dependencies
-pip install -e ".[test]"
-pip install pytest-cov black mypy bandit pre-commit
-
-# Install pre-commit hooks
-pre-commit install
-
-# Generate keys
-mkdir -p keys audit
-openssl rand -hex 32 > keys/mcp_hmac_key
-```
-
-### Code Quality Tools
-
-```bash
-# Format code (Black)
-black mcp/ tests/
-
-# Sort imports (isort)
-isort mcp/ tests/
-
-# Type checking (mypy)
-mypy mcp/
-
-# Security linting (Bandit)
-bandit -r mcp/
-
-# Run all checks
-pre-commit run --all-files
-```
-
-### Project Structure
+## Project Structure
 
 ```
 CloakMCP/
-├── mcp/                        # Main package
+├── cloakmcp/                      # Main package (14 modules, ~2,150 LOC)
 │   ├── __init__.py
-│   ├── actions.py              # Action engine (redact, pseudonymize, etc.)
-│   ├── audit.py                # Audit logging
-│   ├── cli.py                  # CLI entry point
-│   ├── dirpack.py              # Directory pack/unpack
-│   ├── normalizer.py           # Text normalization
-│   ├── policy.py               # Policy engine (YAML parsing)
-│   ├── scanner.py              # Secret detectors
-│   ├── server.py               # FastAPI server
-│   ├── storage.py              # Vault encryption
-│   └── utils.py                # Utilities (hashing, encoding)
-├── tests/                      # Test suite
-│   ├── test_comprehensive.py  # Full feature tests
-│   ├── test_api.py             # API endpoint tests
-│   ├── test_smoke.py           # Basic smoke test
-│   └── README.md
-├── examples/                   # Example files
-│   ├── mcp_policy.yaml         # Example policy
-│   └── client_sanitize.py      # API client example
-├── .vscode/                    # VS Code integration
-│   ├── keybindings.json
-│   ├── settings.json
-│   └── tasks.json
-├── deploy/                     # Deployment configs
-│   └── cloak-local.service       # systemd service
-├── api/                        # API examples
-│   └── requests.http           # REST Client examples
-├── docs/                       # Documentation
-│   ├── VSCODE_MANUAL.md
-│   ├── QUICKREF.md
-│   ├── ISSUES_REPORT.md
-│   └── DEPLOYMENT_SUMMARY.md
-├── pyproject.toml              # Package metadata
-├── pytest.ini                  # pytest configuration
-├── .gitignore
-├── .mcpignore                  # Pack/unpack ignore patterns
-├── LICENSE                     # MIT License
-├── README.md                   # This file
-├── CLAUDE.md                   # LLM instructions
-├── CONTRIBUTING.md
-├── SECURITY.md
-└── AUTHORS.md
+│   ├── actions.py                 # Action engine (redact, pseudonymize, etc.)
+│   ├── audit.py                   # Audit logging
+│   ├── cli.py                     # CLI entry point (scan, sanitize, pack, unpack, hook)
+│   ├── dirpack.py                 # Directory pack/unpack walker
+│   ├── filepack.py                # Text-level pack/unpack with overlap dedup
+│   ├── hooks.py                   # Claude Code hooks (session-start/end, guard-write)
+│   ├── mcp_server.py              # MCP tool server (JSON-RPC 2.0 over stdio)
+│   ├── normalizer.py              # Text normalization
+│   ├── policy.py                  # Policy engine (YAML, inheritance, merging)
+│   ├── scanner.py                 # Secret detectors (regex, entropy, IP, URL, email)
+│   ├── server.py                  # FastAPI REST server (localhost)
+│   ├── storage.py                 # Vault encryption (Fernet AES-128)
+│   └── utils.py                   # Utilities (hashing, encoding)
+├── tests/                         # Test suite (115+ tests, 6 files)
+│   ├── test_comprehensive.py      # Full feature tests
+│   ├── test_api.py                # API endpoint tests
+│   ├── test_filepack.py           # Pack/unpack round-trip tests
+│   ├── test_hooks.py              # Claude Code hook tests
+│   ├── test_mcp_server.py         # MCP server protocol tests
+│   └── test_smoke.py              # Basic smoke test
+├── demo/                          # Live demo (Spring Boot banking service)
+│   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
+│   ├── mcp_demo.sh                # MCP protocol + hook lifecycle demo
+│   ├── transcript.sh              # Screenshot-friendly before/after
+│   ├── run_demo.sh                # Interactive 5-act presentation
+│   └── src/                       # Fake banking microservice (3 config files)
+├── examples/                      # Example policies
+│   ├── mcp_policy.yaml            # Default policy
+│   └── policies/                  # Group policy examples (inheritance)
+├── .claude/                       # Claude Code integration
+│   ├── hooks/                     # Hook scripts (session-start/end, guard-write)
+│   └── settings.local.json        # Hook + permission configuration
+├── .mcp.json                      # MCP server discovery for Claude Code
+├── .vscode/                       # VS Code integration
+├── pyproject.toml                 # Package metadata (v0.5.0)
+├── LICENSE                        # MIT License
+└── README.md                      # This file
 ```
 
 ---
 
-## 🤝 Contributing
+## Documentation
 
-Contributions are welcome! Please follow these guidelines:
-
-### How to Contribute
-
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-3. **Make** your changes
-4. **Add tests** for new functionality
-5. **Run tests**: `pytest -v`
-6. **Format code**: `black mcp/ tests/`
-7. **Commit**: `git commit -m "feat: add amazing feature"`
-8. **Push**: `git push origin feature/amazing-feature`
-9. **Open** a Pull Request
-
-### Commit Message Convention
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `test:` Test additions/changes
-- `refactor:` Code refactoring
-- `perf:` Performance improvements
-- `chore:` Maintenance tasks
-
-### Code Style
-
-- **Python 3.10+** with type hints
-- **Black** for formatting (line length: 100)
-- **isort** for import sorting
-- **mypy** for type checking (strict mode)
-- **pytest** for testing (target: 95% coverage)
-
-### Pull Request Checklist
-
-- [ ] Tests pass (`pytest -v`)
-- [ ] Code formatted (`black mcp/ tests/`)
-- [ ] Type checks pass (`mypy mcp/`)
-- [ ] Security checks pass (`bandit -r mcp/`)
-- [ ] Documentation updated
-- [ ] CHANGELOG.md updated
-- [ ] No secrets committed (run `cloak scan`)
-
-**📖 Full guide**: See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+| Document | Description |
+|----------|-------------|
+| **[`README.md`](README.md)** | This file (overview and quick start) |
+| **[`demo/README.md`](demo/README.md)** | Live demo guide (4 scripts, LLM + MCP) |
+| **[`QUICKREF.md`](QUICKREF.md)** | One-page cheat sheet for daily use |
+| **[`SERVER.md`](SERVER.md)** | Server configuration and security model |
+| **[`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)** | Complete VS Code integration guide |
+| **[`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
+| **[`CLAUDE.md`](CLAUDE.md)** | Project specifications (for LLMs) |
+| **[`SECURITY.md`](SECURITY.md)** | Security policy and disclosure |
+| **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Contribution guidelines |
+| **[`tests/README.md`](tests/README.md)** | Test suite documentation |
 
 ---
 
-## 📝 Changelog
+## Contributing
 
-### v0.3.3 (2026-02-20) — Performance & Test Reliability
+Contributions welcome! See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
 
-**Fixed**:
-- **Critical performance bug**: email regex caused catastrophic backtracking on large inputs (10 MB took ~38s, now <0.1s). Bounded quantifiers replace unbounded `+` in all email patterns.
-- **API error handling**: `/sanitize` and `/scan` endpoints return proper HTTP 500 JSON responses instead of raw exceptions.
-- **Test reliability**: fixed `test_action_pseudonymize` (HMAC key path resolution) and `test_vault_create` (lazy vault file creation).
+```bash
+# Development setup
+git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[test]"
+mkdir -p keys audit && openssl rand -hex 32 > keys/mcp_hmac_key
 
-**Added**:
-- Optional test dependencies: `pip install -e ".[test]"` installs pytest and httpx.
-- `@pytest.mark.slow` marker for performance tests, excluded by default.
-
-**Changed**:
-- API test suite rewritten with unified fixture for proper module-level initialization.
-
-### v0.3.2 (2025-11-12) — Group Policy Inheritance
-
-**Added**:
-- **Group policy inheritance**: Hierarchical policy loading (company → team → project)
-- **Policy management commands**: `cloak policy validate` and `cloak policy show`
-- **Cycle detection**: Prevent circular policy inheritance
-- **Deep policy merging**: Later policies override earlier ones with clear precedence rules
-- **Path resolution**: Tilde expansion and relative path support for `inherits` field
-
-**Features**:
-- Policies can inherit from multiple parents using `inherits` field
-- Inheritance chain tracking for debugging (shows full policy ancestry)
-- Merged policy export in YAML or JSON format
-- Example policies demonstrating 3-level hierarchy (company/team/project)
-
-**Security**:
-- Policies share **detection rules** only, NOT encryption keys
-- Each project maintains unique vault key (local-first model preserved)
-- No remote vault server required for policy distribution
-
-**Documentation**:
-- Added comprehensive Group Policies section to README
-- Created GROUP_POLICY_IMPLEMENTATION.md with implementation details
-- Example policy files: company-baseline.yaml, team-backend.yaml, project-with-inheritance.yaml
-
-**Fixed**:
-- Path resolution bug: tilde expansion now occurs before absolute path check
-
-### v0.3.1 (2025-11-12) — Security Hardening Release
-
-**BREAKING CHANGES**:
-- Tags now use HMAC-SHA256 (keyed) instead of plain SHA-256. **Existing vaults are incompatible** with v0.3.1. Backup your vaults before upgrading.
-
-**Security** (Critical):
-- **HMAC-based tags**: Vault tags now use HMAC-SHA256 with vault key, preventing brute-force attacks on structured secrets
-- Comprehensive SERVER.md documentation with threat model and security architecture
-- Explicit warnings for server network exposure
-- Updated security claims in README with accurate cryptographic guarantees
-
-**Documentation**:
-- Added SERVER.md (20 KB) with complete server configuration guide
-- Added 5 Mermaid diagrams showing data flow and security architecture
-- Clarified where secrets are stored and why LLMs cannot access them
-- Added comparison table with existing tools (ggshield, SOPS, etc.)
-
-**Changed**:
-- Version badge changed from "beta" to "alpha" to reflect ongoing security review
-- Improved security messaging throughout documentation
-
-### v0.2.5 (2025-11-11) — Performance & Features
-
-**Added**:
-- HMAC key caching for 100-1000× performance improvement in bulk operations
-- API rate limiting (10 requests/minute per IP) with slowapi integration
-- Vault export/import commands for disaster recovery (`vault-export`, `vault-import`, `vault-stats`)
-- CLI input validation for all file and directory paths
-- Key length validation with security warnings
-
-**Fixed**:
-- CLI crashes on invalid file paths (now shows clear error messages)
-- CIDR validation errors on malformed policy entries
-- Silent failures in pack/unpack operations (now logged with specific exception types)
-- Missing error visibility in file operations (added counters and summary messages)
-
-**Security**:
-- Input path validation prevents path traversal attacks
-- Rate limiting protects against brute-force token attacks
-- Graceful handling of malformed CIDR strings in policies
-
-**Performance**:
-- Key caching reduces I/O bottleneck from 100-500 ops/sec to 100,000+ ops/sec
-
-### v0.2.0 (2025-11-11) — Beta Release
-
-**Added**:
-- Pack/unpack commands for directory-level operations
-- Encrypted vault storage (`~/.cloakmcp/`)
-- Deterministic tagging (same secret → same tag)
-- Comprehensive test suite (90+ tests)
-- VS Code integration (keyboard shortcuts, tasks)
-- Complete documentation (50+ pages)
-- API server mode (FastAPI)
-- `.mcpignore` support for excluding files
-
-**Fixed**:
-- Leading backslashes in source files (YAML parsing issue)
-- Version mismatch in API server (0.1.0 → 0.2.0)
-
-**Changed**:
-- Improved error handling in file operations
-- Better audit logging format
-- Enhanced documentation structure
-
-### v0.1.0 (2025-11-06) — Alpha Release
-
-**Initial release**:
-- Basic scan/sanitize commands
-- Policy-driven detection
-- YAML configuration
-- Audit logging
-- CLI interface
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [`LICENSE`](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2025 Olivier Vitrac and contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction...
+# Code quality
+black cloakmcp/ tests/
+mypy cloakmcp/
+bandit -r cloakmcp/
+pytest -v
 ```
 
+Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-write handler`)
+
 ---
 
-## 👥 Authors & Acknowledgments
+## Changelog
 
-### Authors
+### v0.5.0 — MCP Server + Claude Code Hooks
 
-- **Olivier Vitrac** — *Design & Implementation* — [Adservio Innovation Lab](https://adservio.fr)
+**Added**:
+- **MCP tool server** (`cloak-mcp-server`): 6 tools via JSON-RPC 2.0 over stdio for Claude Code
+- **Claude Code hooks**: SessionStart (auto-pack), SessionEnd (auto-unpack), PreToolUse (guard-write)
+- **Hook handler module** (`cloakmcp/hooks.py`): session state management, stale state recovery
+- **File-level pack/unpack** (`cloakmcp/filepack.py`): text-level operations with overlapping match deduplication
+- **Live demo suite** (`demo/`): 4 scripts — LLM demo (Ollama/Claude), MCP protocol demo, transcript, interactive
+- **Demo banking service**: Spring Boot `BankTransferService.java` with 10+ fake secrets across 3 config files
+- **MCP server tests** (`tests/test_mcp_server.py`): protocol compliance tests
+- **Hook tests** (`tests/test_hooks.py`): session lifecycle and guard tests
 
-### Contributors
+**Changed**:
+- **Package renamed**: `mcp/` → `cloakmcp/` (avoids conflict with Anthropic's `mcp` package)
+- **Entry points**: `cloak = cloakmcp.cli:main`, `cloak-mcp-server = cloakmcp.mcp_server:main`
+- **Test suite expanded**: 90+ → 115+ tests across 6 test files
+
+**Fixed**:
+- **Overlapping match deduplication**: Prevents round-trip corruption when multiple scanner rules match overlapping text spans
+- **URL regex backtracking**: Negative lookbehind prevents trailing punctuation consumption
+- **Email regex catastrophic backtracking**: Bounded quantifiers replace unbounded `+`
+
+### v0.3.3 — Performance & Test Reliability
+
+- Fixed email regex catastrophic backtracking (10 MB: ~38s → <0.1s)
+- API endpoints return proper HTTP 500 JSON responses
+- Fixed test reliability issues (HMAC key path, lazy vault creation)
+
+### v0.3.2 — Group Policy Inheritance
+
+- Hierarchical policy loading (company → team → project)
+- `cloak policy validate` and `cloak policy show` commands
+- Cycle detection, deep merging, tilde expansion
+
+### v0.3.1 — Security Hardening
+
+- HMAC-based tags (keyed with vault key) replace plain SHA-256
+- SERVER.md with threat model and security architecture
+
+### v0.2.5 — Performance & Features
+
+- HMAC key caching (100-1000x improvement)
+- API rate limiting, vault export/import, CLI validation
+
+### v0.2.0 — Beta Release
+
+- Pack/unpack commands, encrypted vaults, deterministic tagging
+- VS Code integration, API server, comprehensive test suite
+
+### v0.1.0 — Alpha Release
+
+- Initial release: scan, sanitize, policy engine, audit logging
+
+---
+
+## License
+
+MIT License — see [`LICENSE`](LICENSE).
+
+---
+
+## Authors
+
+**Olivier Vitrac** — *Design & Implementation* — [Adservio Innovation Lab](https://adservio.fr)
 
 See [`AUTHORS.md`](AUTHORS.md) for the full list of contributors.
 
-### Acknowledgments
-
-- Inspired by [GitGuardian CLI](https://github.com/GitGuardian/ggshield)
-- Inspired by [Mozilla SOPS](https://github.com/mozilla/sops)
-- Inspired by OpenAI Red Team practices
-- Thanks to the Python cryptography team
-- Thanks to FastAPI and Pydantic maintainers
-
 ---
 
-## 🔗 Links
+## Links
 
-- **GitHub Repository**: https://github.com/ovitrac/CloakMCP
-- **Issue Tracker**: https://github.com/ovitrac/CloakMCP/issues
-- **Discussions**: https://github.com/ovitrac/CloakMCP/discussions
-- **Documentation**: [Full docs](./docs/)
+- **Repository**: https://github.com/ovitrac/CloakMCP
+- **Issues**: https://github.com/ovitrac/CloakMCP/issues
+- **Documentation**: [DeepWiki](https://deepwiki.com/ovitrac/CloakMCP)
 - **License**: [MIT](./LICENSE)
-
----
-
-## 🆘 Support
-
-### Getting Help
-
-1. **Read the docs**: Start with [`QUICKREF.md`](QUICKREF.md) or [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
-2. **Check issues**: Search [existing issues](https://github.com/ovitrac/CloakMCP/issues)
-3. **Ask questions**: Open a [discussion](https://github.com/ovitrac/CloakMCP/discussions)
-4. **Report bugs**: Create an [issue](https://github.com/ovitrac/CloakMCP/issues/new)
-
-### Common Issues
-
-| Problem                       | Solution                                          |
-| ----------------------------- | ------------------------------------------------- |
-| `cloak: command not found`      | Activate venv: `source .venv/bin/activate`        |
-| `Missing API token`           | Create: `openssl rand -hex 32 > keys/mcp_api_token` |
-| `Policy file not found`       | Use absolute path or check working directory      |
-| Secrets not detected          | Add custom rule to `mcp_policy.yaml`              |
-| `InvalidToken` (vault error)  | Key mismatch; check `~/.cloakmcp/keys/`           |
-
-**📖 Full troubleshooting**: See [`VSCODE_MANUAL.md#troubleshooting`](VSCODE_MANUAL.md#troubleshooting)
-
----
-
-## ⚠️ Disclaimer
-
-CloakMCP protects **content confidentiality** (hides values), not **intent semantics** (project logic). Always review sanitized output before sharing. Vault integrity relies on local filesystem security — keep `~/.cloakmcp/` private and backed up.
-
-**Important**: This tool is designed for **authorized use only**. Do not use to circumvent security policies or exfiltrate sensitive data.
-
----
-
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=ovitrac/CloakMCP&type=Date)](https://star-history.com/#ovitrac/CloakMCP&Date)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by [Olivier Vitrac](https://github.com/ovitrac) at [Adservio Innovation Lab](https://adservio.fr)**
+*"Claude may read, refactor, or reason on tagged data —
+but never unmask what the vault keeps safe."*
 
-**⭐ Star us on GitHub — it helps!**
-
-[⬆ Back to Top](#-cloakmcp)
+**[Back to Top](#cloakmcp)**
 
 </div>

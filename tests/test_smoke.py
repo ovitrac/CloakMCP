@@ -1,5 +1,5 @@
-from mcp.policy import Policy
-from mcp.cli import sanitize_text
+from cloakmcp.policy import Policy
+from cloakmcp.cli import sanitize_text
 
 EXAMPLE = """Token: AKIAABCDEFGHIJKLMNOP
 Email: alice@example.org and bob@internal.company

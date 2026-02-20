@@ -12,7 +12,7 @@ SSH_PRIV_RE = re.compile(r"(?s)-----BEGIN (?:OPENSSH|RSA|DSA|EC|ED25519) PRIVATE
 AWS_KEY_RE = re.compile(r"\b(AKIA|ASIA)[A-Z0-9]{16}\b")
 GCP_KEY_RE = re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b")
 AZURE_LIKE_RE = re.compile(r"\b[0-9A-Za-z+/]{43}=\b")
-URL_RE = re.compile(r"\b(https?://[^\s)>\]}\"']+)")
+URL_RE = re.compile(r"\b(https?://[^\s)>\]}\"']+(?<![.,;:!?\-]))")
 IPv4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1?\d{1,2})\b")
 IPv6_RE = re.compile(r"\b(?:[A-F0-9]{1,4}:){7}[A-F0-9]{1,4}\b", re.I)
 BASE64ISH_RE = re.compile(r"(?:[A-Za-z0-9+/]{40,}={0,2})")

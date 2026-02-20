@@ -26,15 +26,15 @@ from pathlib import Path
 from typing import Dict
 
 # Import MCP modules
-from mcp.policy import Policy, Rule, GlobalsCfg, PseudonymizationCfg
-from mcp.scanner import scan, shannon_entropy, Match
-from mcp.actions import apply_action, ActionResult
-from mcp.normalizer import normalize
-from mcp.utils import sha256_hex, base62_short, nfc, strip_zero_width
-from mcp.storage import Vault
-from mcp.dirpack import pack_dir, unpack_dir, load_ignores, iter_files
-from mcp.cli import sanitize_text, _load_text, _write_text
-from mcp.audit import write_event, now_iso
+from cloakmcp.policy import Policy, Rule, GlobalsCfg, PseudonymizationCfg
+from cloakmcp.scanner import scan, shannon_entropy, Match
+from cloakmcp.actions import apply_action, ActionResult
+from cloakmcp.normalizer import normalize
+from cloakmcp.utils import sha256_hex, base62_short, nfc, strip_zero_width
+from cloakmcp.storage import Vault
+from cloakmcp.dirpack import pack_dir, unpack_dir, load_ignores, iter_files
+from cloakmcp.cli import sanitize_text, _load_text, _write_text
+from cloakmcp.audit import write_event, now_iso
 
 
 # ============================================================================

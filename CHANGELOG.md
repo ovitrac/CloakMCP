@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.0] - 2026-02-20
+
+### Added
+- **MCP tool server** (`cloak-mcp-server`): 6 tools exposed via JSON-RPC 2.0 over stdio for native Claude Code integration (`cloak_scan_text`, `cloak_pack_text`, `cloak_unpack_text`, `cloak_vault_stats`, `cloak_pack_dir`, `cloak_unpack_dir`).
+- **Claude Code hooks** (`cloakmcp/hooks.py`): automatic session protection via `SessionStart` (pack), `SessionEnd` (unpack), and `PreToolUse` (guard-write) hooks with session state management and stale state recovery.
+- **File-level pack/unpack** (`cloakmcp/filepack.py`): text-level operations with overlapping match deduplication algorithm (longest-span-wins).
+- **Live demo suite** (`demo/`): 4 scripts — `llm_demo.sh` (Ollama/Claude), `mcp_demo.sh` (MCP protocol + hook lifecycle), `transcript.sh` (screenshot-friendly 6-phase), `run_demo.sh` (interactive 5-act).
+- **Demo banking microservice**: Spring Boot `BankTransferService.java` with 10+ fake secrets across 3 config files (`application.properties`, `application.yml`), Maven scaffold, `.mcpignore`.
+- **MCP server tests** (`tests/test_mcp_server.py`): 18 tests covering protocol compliance, tool dispatch, error handling.
+- **Hook tests** (`tests/test_hooks.py`): 17 tests covering session lifecycle, guard-write scanning, state management.
+- **Filepack tests** (`tests/test_filepack.py`): round-trip integrity tests with overlap deduplication.
+- `.mcp.json` for Claude Code MCP server discovery.
+- `.claude/hooks/` shell scripts for Claude Code hook integration.
+- `.claude/settings.local.json` with hook and permission configuration.
+
+### Changed
+- **Package renamed**: `mcp/` → `cloakmcp/` to avoid conflict with Anthropic's `mcp` package.
+- **Entry points**: `cloak = cloakmcp.cli:main`, `cloak-mcp-server = cloakmcp.mcp_server:main`.
+- **README rewritten**: new teaser with LLM secret rehydration demo, Claude Code integration section, MCP/hooks documentation, updated project structure, streamlined from 1397 to 747 lines.
+- Test suite expanded: 90+ → 115+ tests across 6 test files.
+
+### Fixed
+- **Overlapping match corruption**: added `_dedup_overlapping()` to prevent round-trip data loss when multiple scanner rules match overlapping text spans (e.g., JWT regex matching domain names inside URLs).
+- **URL regex backtracking**: negative lookbehind `(?<![.,;:!?\-])` prevents trailing punctuation consumption.
+
+---
+
 ## [0.3.3] - 2026-02-20
 
 ### Fixed

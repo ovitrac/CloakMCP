@@ -1,0 +1,5 @@
+# CloakMCP demo — ignore build artifacts and structural XML
+target/
+*.class
+*.jar
+pom.xml

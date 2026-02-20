@@ -12,6 +12,21 @@ from .storage import Vault
 TAG_RE = re.compile(r"\b([A-Z]{2,8}-[0-9a-f]{12})\b")
 
 
+def _dedup_overlapping(matches: list) -> list:
+    """Remove overlapping matches, keeping the longest span at each position."""
+    if not matches:
+        return []
+    # Sort by start, then by span length descending (prefer longer matches)
+    sorted_m = sorted(matches, key=lambda m: (m.start, -(m.end - m.start)))
+    kept = [sorted_m[0]]
+    for m in sorted_m[1:]:
+        if m.start >= kept[-1].end:
+            # No overlap — keep it
+            kept.append(m)
+        # Otherwise skip (fully or partially overlapping with a longer match)
+    return kept
+
+
 def pack_text(
     text: str,
     policy: Policy,
@@ -33,6 +48,9 @@ def pack_text(
     matches = scan(norm, policy)
     if not matches:
         return norm, 0
+
+    # Deduplicate overlapping matches to prevent corruption
+    matches = _dedup_overlapping(matches)
 
     out = list(norm)
     count = 0

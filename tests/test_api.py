@@ -49,7 +49,7 @@ def api_env():
     """Create unified temp environment for API tests.
 
     Sets up API token, HMAC key, and policy in a single temp dir,
-    then reloads mcp.server so module-level globals pick up the
+    then reloads cloakmcp.server so module-level globals pick up the
     correct token and default policy path.
     """
     with tempfile.TemporaryDirectory() as td:
@@ -73,13 +73,13 @@ def api_env():
         os.environ["MCP_POLICY"] = str(policy_path)
 
         # (Re)load server module so API_TOKEN and DEFAULT_POLICY are set correctly
-        import mcp.server
-        importlib.reload(mcp.server)
+        import cloakmcp.server
+        importlib.reload(cloakmcp.server)
 
         yield {
             "token": TEST_TOKEN,
             "policy_path": str(policy_path),
-            "app": mcp.server.app,
+            "app": cloakmcp.server.app,
         }
 
         os.chdir(orig_cwd)
