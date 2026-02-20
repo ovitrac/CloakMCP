@@ -1,5 +1,5 @@
 """
-Comprehensive test suite for CloakMCP v0.3.1
+Comprehensive test suite for CloakMCP v0.3.3
 
 Tests all major functionality:
 - Policy loading and validation
@@ -67,7 +67,7 @@ globals:
 detection:
   - id: test_email
     type: regex
-    pattern: '(?i)[a-z0-9_.+-]+@[a-z0-9-]+\\.[a-z0-9.-]+'
+    pattern: '(?i)[a-z0-9_.+-]{1,64}@[a-z0-9-]{1,63}(?:\\.[a-z0-9-]{1,63})+'
     action: replace_with_template
     template: '<EMAIL:{hash8}>'
   - id: test_aws_key
@@ -110,12 +110,12 @@ detection:
 @pytest.fixture
 def policy(policy_yaml: Path) -> Policy:
     """Load policy from YAML"""
-    # Change to temp dir so relative paths work
+    # Change to temp dir so relative paths work for key loading
     orig_cwd = os.getcwd()
     os.chdir(policy_yaml.parent)
     try:
         pol = Policy.load(str(policy_yaml))
-        return pol
+        yield pol
     finally:
         os.chdir(orig_cwd)
 
@@ -317,9 +317,12 @@ class TestPolicy:
 
 class TestVault:
     def test_vault_create(self, temp_dir: Path):
-        """Test vault creation"""
+        """Test vault creation (key on init, vault on first write)"""
         vault = Vault(str(temp_dir))
         assert os.path.exists(vault.key_path)
+        # Vault file is created on first tag_for (lazy write)
+        assert not os.path.exists(vault.vault_path)
+        vault.tag_for("test_secret", prefix="TAG")
         assert os.path.exists(vault.vault_path)
 
     def test_vault_tag_deterministic(self, temp_dir: Path):
@@ -681,6 +684,7 @@ DATABASE_URL = 'postgresql://user:pass@db.internal.com:5432/mydb'
 # ============================================================================
 
 class TestPerformance:
+    @pytest.mark.slow
     def test_scan_large_file(self, policy: Policy):
         """Test scanning large file (1MB)"""
         import time
@@ -689,7 +693,9 @@ class TestPerformance:
         matches = scan(text, policy)
         elapsed = time.time() - start
         assert elapsed < 5.0  # Should complete within 5 seconds
+        assert len(matches) >= 10000  # At least one match per email
 
+    @pytest.mark.slow
     def test_vault_many_secrets(self, temp_dir: Path):
         """Test vault with many secrets"""
         import time

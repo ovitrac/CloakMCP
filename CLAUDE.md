@@ -6,6 +6,46 @@
 
 ---
 
+
+## 0a. Purpose of this file
+
+This document defines behavioral rules for working on the memctl codebase:
+
+- Understand the **cloakMCP** architecture and design invariants.
+- Work with the CLI, store, policy engine, and MCP server.
+- Propose and apply changes safely, incrementally, and audibly.
+- Respect **strict authorship rules** and the project's working style.
+
+If any instruction here conflicts with generic defaults, **this file takes precedence** for this repository.
+
+
+## 0b. Authorship & attribution rules
+
+This is **non-negotiable** for this repository.
+
+1. **Sole author**
+
+   For _all_ source files, documentation, commits, and any artifact in this repository:
+
+   ```text
+   Author: Olivier Vitrac, PhD, HDR | Adservio Innovation Lab | olivier.vitrac@adservio.fr
+   ```
+
+   Olivier Vitrac is the **sole and unique author and contributor**. No other attribution of any kind is permitted.
+
+2. **No external attribution**
+
+   - Do **not** add any co-author, co-contributor, co-authored-by, generated-by, or assisted-by line — in files, headers, commits, documentation, or metadata.
+   - Do **not** mention any tooling, model, or AI system by name anywhere in the repository.
+   - No acknowledgment sentences referencing external tools or systems.
+
+3. **Commit messages**
+
+   - Must be written as by the sole author (Olivier Vitrac).
+   - Follow conventional commit format: `type(scope): description`.
+   - No attribution of any kind beyond the author.
+
+
 ## 1. Purpose
 
 CloakMCP is a **local-first anonymization layer** designed to protect secrets, credentials, and personal data **before any content leaves a developer’s workstation** for analysis by LLMs such as Claude, Codex, or Gemini.

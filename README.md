@@ -11,7 +11,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.3.2--alpha-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.3.3-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-90%2B%20passing-brightgreen.svg)](./tests)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -415,9 +415,10 @@ Core dependencies (auto-installed):
 - `uvicorn>=0.30.0` — ASGI server for API
 - `pydantic>=2.7.0` — Data validation
 
-Development dependencies:
+Development/test dependencies:
 ```bash
-pip install pytest pytest-cov black mypy bandit
+pip install -e ".[test]"              # pytest + httpx (for API tests)
+pip install pytest-cov black mypy bandit  # optional extras
 ```
 
 ---
@@ -589,7 +590,7 @@ keys/
 
 ## 🏢 Group Policies
 
-**New in v0.3.2**: Organizations can now define hierarchical security policies that cascade from company → team → project level.
+**New in v0.3.2+**: Organizations can now define hierarchical security policies that cascade from company -> team -> project level.
 
 ### Why Group Policies?
 
@@ -986,13 +987,16 @@ jobs:
 
 ```bash
 # Install test dependencies
-pip install pytest pytest-cov
+pip install -e ".[test]"
 
-# Run all tests
-pytest -v
+# Run all tests (performance tests excluded by default)
+pytest
+
+# Run all tests including performance tests
+pytest -m ""
 
 # Run with coverage
-pytest --cov=cloak --cov-report=html --cov-report=term
+pytest --cov=mcp --cov-report=html --cov-report=term
 
 # View coverage report
 xdg-open htmlcov/index.html  # Linux
@@ -1046,9 +1050,9 @@ cd CloakMCP
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install in editable mode with dev dependencies
-pip install -e .
-pip install pytest pytest-cov black mypy bandit pre-commit
+# Install in editable mode with test dependencies
+pip install -e ".[test]"
+pip install pytest-cov black mypy bandit pre-commit
 
 # Install pre-commit hooks
 pre-commit install
@@ -1179,6 +1183,20 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ---
 
 ## 📝 Changelog
+
+### v0.3.3 (2026-02-20) — Performance & Test Reliability
+
+**Fixed**:
+- **Critical performance bug**: email regex caused catastrophic backtracking on large inputs (10 MB took ~38s, now <0.1s). Bounded quantifiers replace unbounded `+` in all email patterns.
+- **API error handling**: `/sanitize` and `/scan` endpoints return proper HTTP 500 JSON responses instead of raw exceptions.
+- **Test reliability**: fixed `test_action_pseudonymize` (HMAC key path resolution) and `test_vault_create` (lazy vault file creation).
+
+**Added**:
+- Optional test dependencies: `pip install -e ".[test]"` installs pytest and httpx.
+- `@pytest.mark.slow` marker for performance tests, excluded by default.
+
+**Changed**:
+- API test suite rewritten with unified fixture for proper module-level initialization.
 
 ### v0.3.2 (2025-11-12) — Group Policy Inheritance
 

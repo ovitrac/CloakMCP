@@ -59,7 +59,7 @@ class StatusResponse(BaseModel):
 app = FastAPI(
     title="Cloak (Micro-Cleanse Preprocessor) — Local API",
     description="Local-only secret removal proxy. Bind to 127.0.0.1 by default. DO NOT expose publicly.",
-    version="0.3.2",
+    version="0.3.3",
 )
 
 # Initialize rate limiter if available
@@ -88,14 +88,20 @@ def health(request: Request, _: None = Depends(bearer_auth)):
 def sanitize(request: Request, req: SanitizeRequest, _: None = Depends(bearer_auth)):
     if RATE_LIMITING_ENABLED and limiter:
         limiter.limit("10/minute")(lambda: None)()
-    pol = Policy.load(req.policy_path)
-    out, blocked = sanitize_text(req.text, pol, dry_run=req.dry_run)
+    try:
+        pol = Policy.load(req.policy_path)
+        out, blocked = sanitize_text(req.text, pol, dry_run=req.dry_run)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     return SanitizeResponse(sanitized=out, blocked=blocked, policy_sha256=policy_hash(req.policy_path))
 
 @app.post("/scan", response_model=SanitizeResponse)
 def scan(request: Request, req: SanitizeRequest, _: None = Depends(bearer_auth)):
     if RATE_LIMITING_ENABLED and limiter:
         limiter.limit("10/minute")(lambda: None)()
-    pol = Policy.load(req.policy_path)
-    out, blocked = sanitize_text(req.text, pol, dry_run=True)
+    try:
+        pol = Policy.load(req.policy_path)
+        out, blocked = sanitize_text(req.text, pol, dry_run=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     return SanitizeResponse(sanitized=out, blocked=blocked, policy_sha256=policy_hash(req.policy_path))

@@ -33,7 +33,7 @@ detection:
     action: pseudonymize
   - id: email
     type: regex
-    pattern: '(?i)[a-z0-9_.+\-]+@[a-z0-9\-]+\.[a-z0-9.\-]+'
+    pattern: '(?i)[a-z0-9_.+\-]{1,64}@[a-z0-9\-]{1,63}(?:\.[a-z0-9\-]{1,63})+'
     action: replace_with_template
     template: '<EMAIL:{hash8}>'
   - id: ipv4

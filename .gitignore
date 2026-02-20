@@ -164,5 +164,26 @@ files.json
 index.py
 inject_global_menu.py
 
-# Claude files
+# LLM files
 CLAUDE.md
+GEMINI.md
+AGENTS.md
+CODEX.md
+QUICKSTART_CLAUDE_CODE.md
+
+# Blueprints
+base/
+
+# Agent-generated artifacts (Claude/Gemini/Codex)
+FORREVIEW_*
+REVIEW_*
+REVIEW*
+PLAN_*
+INTERPRET*
+CRITIQUE*
+.session*
+.claude*
+.claude/
+SESSION_SUMMARY.md
+import_statements.txt
+codex_*

@@ -5,7 +5,7 @@ from typing import Iterable, List
 
 from .policy import Policy, Rule
 
-EMAIL_RE = re.compile(r"(?i)[a-z0-9_.+\-]+@[a-z0-9\-]+\.[a-z0-9.\-]+")
+EMAIL_RE = re.compile(r"(?i)[a-z0-9_.+\-]{1,64}@[a-z0-9\-]{1,63}(?:\.[a-z0-9\-]{1,63})+")
 JWT_RE = re.compile(r"\b[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b")
 PEM_CERT_RE = re.compile(r"(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----")
 SSH_PRIV_RE = re.compile(r"(?s)-----BEGIN (?:OPENSSH|RSA|DSA|EC|ED25519) PRIVATE KEY-----.*?-----END .*? PRIVATE KEY-----")
