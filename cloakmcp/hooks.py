@@ -10,10 +10,13 @@ Safety invariants:
 - Single testable Python path for all hook logic
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
+import re
 import sys
-from typing import Any, Dict, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from .dirpack import pack_dir, unpack_dir
 from .filepack import pack_text, TAG_RE
@@ -23,8 +26,26 @@ from .normalizer import normalize
 from .storage import Vault
 
 SESSION_STATE_FILE = ".cloak-session-state"
+AUDIT_FILE = ".cloak-session-audit.jsonl"
 DEFAULT_POLICY = "examples/mcp_policy.yaml"
 DEFAULT_PREFIX = "TAG"
+
+# Conservative set of obviously dangerous command patterns
+DANGEROUS_PATTERNS: List[Tuple[str, str]] = [
+    (r"\brm\s+-rf\s+/(?:\s|$)", "rm -rf / (recursive delete root)"),
+    (r"\bsudo\s+rm\b", "sudo rm (privileged delete)"),
+    (r"\bcurl\b.*\|\s*sh\b", "curl | sh (remote code execution)"),
+    (r"\bcurl\b.*\|\s*bash\b", "curl | bash (remote code execution)"),
+    (r"\bwget\b.*\|\s*sh\b", "wget | sh (remote code execution)"),
+    (r"\bwget\b.*\|\s*bash\b", "wget | bash (remote code execution)"),
+    (r"\bgit\s+push\s+--force\b", "git push --force (force push)"),
+    (r"\bgit\s+push\s+-f\b", "git push -f (force push)"),
+    (r"\bgit\s+reset\s+--hard\b", "git reset --hard (discard changes)"),
+    (r"\bgit\s+clean\s+-f\b", "git clean -f (remove untracked files)"),
+    (r"\bchmod\s+-R\s+777\b", "chmod -R 777 (world-writable permissions)"),
+    (r"\bdd\s+.*of=/dev/", "dd to device (raw disk write)"),
+    (r"\bmkfs\b", "mkfs (format filesystem)"),
+]
 
 
 def _find_policy() -> str:
@@ -86,6 +107,29 @@ def _remove_state(project_dir: str) -> None:
         os.remove(state_path)
 
 
+def _now_iso() -> str:
+    """Return current UTC timestamp in ISO 8601 format."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_audit(project_dir: str, event: Dict[str, Any]) -> None:
+    """Append an audit event to the session audit log (JSONL).
+
+    Args:
+        project_dir: Project root directory
+        event: Dict with event data (ts is added automatically if missing)
+    """
+    if "ts" not in event:
+        event["ts"] = _now_iso()
+    audit_path = os.path.join(project_dir, AUDIT_FILE)
+    try:
+        with open(audit_path, "a", encoding="utf-8") as f:
+            json.dump(event, f, ensure_ascii=False)
+            f.write("\n")
+    except OSError:
+        pass  # Best-effort: never fail on audit write
+
+
 # ── Hook handlers ───────────────────────────────────────────────
 
 
@@ -134,6 +178,8 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
             )
         }
 
+    _append_audit(project_dir, {"event": "session_pack", "policy": policy_path, "prefix": prefix})
+
     return {
         "additionalContext": (
             "[CloakMCP] Session started. All files have been packed — "
@@ -167,6 +213,8 @@ def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
             file=sys.stderr,
         )
         return {}
+
+    _append_audit(project_dir, {"event": "session_unpack"})
 
     return {}
 
@@ -214,6 +262,13 @@ def handle_guard_write(project_dir: str = ".") -> Dict[str, Any]:
 
     # Build warning with match summary (no secret values exposed)
     rule_ids = sorted({m.rule.id for m in matches})
+
+    _append_audit(project_dir, {
+        "event": "guard_trigger",
+        "match_count": len(matches),
+        "rule_ids": rule_ids,
+    })
+
     return {
         "additionalContext": (
             f"[CloakMCP] WARNING: {len(matches)} potential secret(s) detected "
@@ -221,6 +276,101 @@ def handle_guard_write(project_dir: str = ".") -> Dict[str, Any]:
             "Consider using vault tags instead of raw values."
         )
     }
+
+
+def handle_safety_guard(project_dir: str = ".") -> Dict[str, Any]:
+    """Handle PreToolUse guard for Bash: block obviously dangerous commands.
+
+    Reads Claude hook JSON from stdin, checks tool_input.command against
+    DANGEROUS_PATTERNS, and emits a deny response if matched.
+
+    Returns:
+        Hook response JSON (deny if dangerous, empty if safe)
+    """
+    project_dir = os.path.abspath(project_dir)
+
+    hook_input = _read_stdin_json()
+    if hook_input is None:
+        return {}
+
+    tool_input = hook_input.get("tool_input", {})
+    command = tool_input.get("command", "")
+
+    if not command:
+        return {}
+
+    for pattern, description in DANGEROUS_PATTERNS:
+        if re.search(pattern, command):
+            _append_audit(project_dir, {
+                "event": "safety_block",
+                "pattern_desc": description,
+            })
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"[CloakMCP Safety Guard] Blocked: {description}"
+                    ),
+                }
+            }
+
+    return {}
+
+
+def handle_audit_log(project_dir: str = ".") -> Dict[str, Any]:
+    """Handle PostToolUse audit logging.
+
+    Tier 1 (always-on): Classify CloakMCP-related events from tool calls.
+    Tier 2 (opt-in via CLOAK_AUDIT_TOOLS=1): Log tool metadata with hashed paths.
+
+    Returns:
+        Empty dict (audit logging is silent, never affects tool execution)
+    """
+    project_dir = os.path.abspath(project_dir)
+
+    hook_input = _read_stdin_json()
+    if hook_input is None:
+        return {}
+
+    tool_name = hook_input.get("tool_name", "")
+    tool_input = hook_input.get("tool_input", {})
+
+    # Tier 1: classify CloakMCP-related events
+    event_type = _classify_secret_event(tool_name, tool_input)
+    if event_type:
+        _append_audit(project_dir, {"event": event_type, "tool": tool_name})
+
+    # Tier 2: opt-in tool metadata logging
+    if os.environ.get("CLOAK_AUDIT_TOOLS") == "1":
+        file_path = tool_input.get("file_path", "") or tool_input.get("file", "")
+        hashed_path = ""
+        if file_path:
+            hashed_path = hashlib.sha256(file_path.encode()).hexdigest()[:16]
+        _append_audit(project_dir, {
+            "event": "tool_use",
+            "tool": tool_name,
+            "file_hash": hashed_path,
+        })
+
+    return {}
+
+
+def _classify_secret_event(tool_name: str, tool_input: Dict[str, Any]) -> str:
+    """Classify a tool call as a CloakMCP-related event.
+
+    Returns:
+        Event type string, or empty string if not CloakMCP-related
+    """
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if "cloak pack" in command or "cloak hook session-start" in command:
+            return "cloak_pack"
+        if "cloak unpack" in command or "cloak hook session-end" in command:
+            return "cloak_unpack"
+    elif tool_name in ("Write", "Edit"):
+        return "file_write"
+    return ""
 
 
 def handle_recover(project_dir: str = ".") -> None:
@@ -261,6 +411,8 @@ def dispatch_hook(event: str, project_dir: str = ".") -> None:
         "session-start": handle_session_start,
         "session-end": handle_session_end,
         "guard-write": handle_guard_write,
+        "safety-guard": handle_safety_guard,
+        "audit-log": handle_audit_log,
     }
 
     handler = handlers.get(event)

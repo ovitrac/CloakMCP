@@ -1,4 +1,8 @@
 #!/bin/bash
+# [DEPRECATED] Use scripts/install_claude.sh instead.
+# This script will be removed in a future release.
+echo "[DEPRECATED] Use scripts/install_claude.sh instead" >&2
+#
 # install-claude-hooks.sh — Set up CloakMCP hooks for Claude Code
 #
 # Usage:

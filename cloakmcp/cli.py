@@ -151,7 +151,8 @@ def main() -> None:
     # ── v0.4.0: Hook dispatcher ─────────────────────────────────
 
     s_hook = sub.add_parser("hook", help="Handle Claude Code hook events")
-    s_hook.add_argument("event", choices=["session-start", "session-end", "guard-write"],
+    s_hook.add_argument("event", choices=["session-start", "session-end", "guard-write",
+                                          "safety-guard", "audit-log"],
                         help="Hook event type")
     s_hook.add_argument("--dir", default=".", help="Project root directory")
 
