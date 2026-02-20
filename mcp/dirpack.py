@@ -1,19 +1,15 @@
 from __future__ import annotations
 import fnmatch
 import os
-import re
 import shutil
 from datetime import datetime
-from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from .policy import Policy
-from .scanner import scan
-from .normalizer import normalize
 from .storage import Vault
+from .filepack import TAG_RE, pack_text, unpack_text
 
 IGNORE_FILE = ".mcpignore"
-TAG_RE = re.compile(r"\b([A-Z]{2,8}-[0-9a-f]{12})\b")
 BACKUP_DIR = ".cloak-backups"
 
 def load_ignores(root: str) -> List[str]:
@@ -91,7 +87,7 @@ def pack_dir(
     processed_count = 0
     files_to_modify: List[Tuple[str, int]] = []  # (path, match_count)
 
-    # First pass: scan all files
+    # First pass: scan all files for secrets
     for path in iter_files(root, ignores):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -105,10 +101,9 @@ def pack_dir(
             skipped_count += 1
             continue
 
-        norm = normalize(text)
-        matches = scan(norm, policy)
-        if matches:
-            files_to_modify.append((path, len(matches)))
+        _, count = pack_text(text, policy, vault, prefix=prefix)
+        if count > 0:
+            files_to_modify.append((path, count))
 
     if not files_to_modify:
         print("No secrets found to replace.", file=sys.stderr)
@@ -119,7 +114,7 @@ def pack_dir(
         print(f"[DRY RUN] Would modify {len(files_to_modify)} files:", file=sys.stderr)
         for path, count in files_to_modify[:20]:  # Show first 20
             rel_path = os.path.relpath(path, root)
-            print(f"  {rel_path}: {count} secrets → tags", file=sys.stderr)
+            print(f"  {rel_path}: {count} secrets -> tags", file=sys.stderr)
         if len(files_to_modify) > 20:
             print(f"  ... and {len(files_to_modify) - 20} more files", file=sys.stderr)
         print(f"\nRun without --dry-run to apply changes.", file=sys.stderr)
@@ -129,7 +124,7 @@ def pack_dir(
     if backup:
         create_backup(root)
 
-    # Second pass: modify files
+    # Second pass: modify files (re-read to get fresh content)
     for path, _ in files_to_modify:
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -139,22 +134,12 @@ def pack_dir(
             skipped_count += 1
             continue
 
-        norm = normalize(text)
-        matches = scan(norm, policy)
-        if not matches:
-            continue
-
-        out = list(norm)
-        for m in reversed(matches):
-            tag = vault.tag_for(m.value, prefix=prefix)
-            out[m.start:m.end] = list(tag)
-        new_text = "".join(out)
-
-        if new_text != text:
+        packed, count = pack_text(text, policy, vault, prefix=prefix)
+        if count > 0 and packed != text:
             try:
                 tmp = path + ".cloak.tmp"
                 with open(tmp, "w", encoding="utf-8") as f:
-                    f.write(new_text)
+                    f.write(packed)
                 os.replace(tmp, path)
                 processed_count += 1
             except (OSError, IOError, PermissionError) as e:
@@ -184,7 +169,7 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
     processed_count = 0
     files_to_modify: List[Tuple[str, int]] = []  # (path, tag_count)
 
-    # First pass: scan all files
+    # First pass: scan all files for resolvable tags
     for path in iter_files(root, ignores):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -217,7 +202,7 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
         print(f"[DRY RUN] Would modify {len(files_to_modify)} files:", file=sys.stderr)
         for path, count in files_to_modify[:20]:  # Show first 20
             rel_path = os.path.relpath(path, root)
-            print(f"  {rel_path}: {count} tags → secrets", file=sys.stderr)
+            print(f"  {rel_path}: {count} tags -> secrets", file=sys.stderr)
         if len(files_to_modify) > 20:
             print(f"  ... and {len(files_to_modify) - 20} more files", file=sys.stderr)
         print(f"\nRun without --dry-run to apply changes.", file=sys.stderr)
@@ -237,22 +222,13 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
             skipped_count += 1
             continue
 
-        changed = False
-        def repl(m):
-            nonlocal changed
-            tag = m.group(1)
-            secret = vault.secret_for(tag)
-            if secret is not None:
-                changed = True
-                return secret
-            return tag
-        new_text = TAG_RE.sub(repl, text)
+        unpacked, count = unpack_text(text, vault)
 
-        if changed:
+        if count > 0 and unpacked != text:
             try:
                 tmp = path + ".cloak.tmp"
                 with open(tmp, "w", encoding="utf-8") as f:
-                    f.write(new_text)
+                    f.write(unpacked)
                 os.replace(tmp, path)
                 processed_count += 1
             except (OSError, IOError, PermissionError) as e:

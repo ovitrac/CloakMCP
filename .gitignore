@@ -187,3 +187,6 @@ CRITIQUE*
 SESSION_SUMMARY.md
 import_statements.txt
 codex_*
+
+# CloakMCP session state
+.cloak-session-state

@@ -84,6 +84,8 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="cloak", description="Micro-Cleanse Preprocessor (local secret-removal)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    # ── Existing commands ───────────────────────────────────────
+
     s_scan = sub.add_parser("scan", help="Scan input and log detections (no modifications)")
     s_scan.add_argument("--policy", required=True)
     s_scan.add_argument("--input", required=True, help="File path or '-' for stdin")
@@ -126,6 +128,39 @@ def main() -> None:
     s_policy_show = policy_sub.add_parser("show", help="Show merged policy (after inheritance)")
     s_policy_show.add_argument("--policy", required=True, help="Policy file to show")
     s_policy_show.add_argument("--format", choices=["yaml", "json"], default="yaml", help="Output format")
+
+    # ── v0.4.0: File-level pack/unpack ──────────────────────────
+
+    s_pack_file = sub.add_parser("pack-file", help="Pack a single file: replace secrets by tags")
+    s_pack_file.add_argument("--policy", required=True)
+    s_pack_file.add_argument("--file", required=True, help="File to process")
+    s_pack_file.add_argument("--prefix", default="TAG", help="Tag prefix")
+    s_pack_file.add_argument("--project-root", default=".", help="Project root for vault lookup")
+    s_pack_file.add_argument("--dry-run", action="store_true", help="Preview only")
+
+    s_unpack_file = sub.add_parser("unpack-file", help="Unpack a single file: restore tags from vault")
+    s_unpack_file.add_argument("--file", required=True, help="File to process")
+    s_unpack_file.add_argument("--project-root", default=".", help="Project root for vault lookup")
+    s_unpack_file.add_argument("--dry-run", action="store_true", help="Preview only")
+
+    # ── v0.4.0: Guard (stdin secret scanner) ────────────────────
+
+    s_guard = sub.add_parser("guard", help="Read stdin, exit 1 if secrets detected")
+    s_guard.add_argument("--policy", required=True)
+
+    # ── v0.4.0: Hook dispatcher ─────────────────────────────────
+
+    s_hook = sub.add_parser("hook", help="Handle Claude Code hook events")
+    s_hook.add_argument("event", choices=["session-start", "session-end", "guard-write"],
+                        help="Hook event type")
+    s_hook.add_argument("--dir", default=".", help="Project root directory")
+
+    # ── v0.4.0: Recovery ────────────────────────────────────────
+
+    s_recover = sub.add_parser("recover", help="Detect stale session state and run unpack")
+    s_recover.add_argument("--dir", default=".", help="Project root directory")
+
+    # ── Dispatch ────────────────────────────────────────────────
 
     args = p.parse_args()
     if args.cmd == "scan":
@@ -206,7 +241,7 @@ def main() -> None:
             _validate_policy_path(args.policy)
             is_valid, errors = validate_policy(args.policy)
             if is_valid:
-                print(f"✓ Policy is valid: {args.policy}", file=sys.stderr)
+                print(f"Policy is valid: {args.policy}", file=sys.stderr)
                 policy = Policy.load(args.policy)
                 if len(policy._inherits_from) > 1:
                     print(f"  Inheritance chain:", file=sys.stderr)
@@ -215,7 +250,7 @@ def main() -> None:
                 print(f"  Total detection rules: {len(policy.rules)}", file=sys.stderr)
                 sys.exit(0)
             else:
-                print(f"✗ Policy validation failed: {args.policy}", file=sys.stderr)
+                print(f"Policy validation failed: {args.policy}", file=sys.stderr)
                 for error in errors:
                     print(f"  - {error}", file=sys.stderr)
                 sys.exit(1)
@@ -231,6 +266,56 @@ def main() -> None:
                 data.pop("_inherits_from", None)  # Remove internal field
                 print(json.dumps(data, indent=2))
             return
+
+    # ── v0.4.0 commands ─────────────────────────────────────────
+
+    if args.cmd == "pack-file":
+        from .filepack import pack_file
+        _validate_policy_path(args.policy)
+        _validate_input_path(args.file, "file")
+        _validate_dir_path(args.project_root, "project-root")
+        policy = Policy.load(args.policy)
+        vault = Vault(args.project_root)
+        dry_run = getattr(args, 'dry_run', False)
+        count = pack_file(args.file, policy, vault, prefix=args.prefix, dry_run=dry_run)
+        print(f"{count} secret(s) {'found' if dry_run else 'replaced'} in {args.file}", file=sys.stderr)
+        return
+
+    if args.cmd == "unpack-file":
+        from .filepack import unpack_file
+        _validate_input_path(args.file, "file")
+        _validate_dir_path(args.project_root, "project-root")
+        vault = Vault(args.project_root)
+        dry_run = getattr(args, 'dry_run', False)
+        count = unpack_file(args.file, vault, dry_run=dry_run)
+        print(f"{count} tag(s) {'found' if dry_run else 'restored'} in {args.file}", file=sys.stderr)
+        return
+
+    if args.cmd == "guard":
+        _validate_policy_path(args.policy)
+        policy = Policy.load(args.policy)
+        text = sys.stdin.read()
+        norm = normalize(text)
+        matches = scan(norm, policy)
+        if matches:
+            rule_ids = sorted({m.rule.id for m in matches})
+            print(
+                f"GUARD: {len(matches)} secret(s) detected (rules: {', '.join(rule_ids)})",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        sys.exit(0)
+
+    if args.cmd == "hook":
+        from .hooks import dispatch_hook
+        dispatch_hook(args.event, project_dir=args.dir)
+        return
+
+    if args.cmd == "recover":
+        from .hooks import handle_recover
+        _validate_dir_path(args.dir, "directory")
+        handle_recover(project_dir=args.dir)
+        return
 
 if __name__ == "__main__":
     main()
