@@ -1,9 +1,10 @@
 from __future__ import annotations
 import fnmatch
+import hashlib
 import os
 import shutil
-from datetime import datetime
-from typing import Iterable, List, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Tuple
 
 from .policy import Policy
 from .storage import Vault
@@ -242,3 +243,157 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
 
     if processed_count > 0 or skipped_count > 0:
         print(f"Unpack complete: {processed_count} files modified, {skipped_count} files skipped", file=sys.stderr)
+
+
+# ── R4: Post-unpack verification ──────────────────────────────────
+
+
+def verify_unpack(root: str) -> Dict[str, Any]:
+    """Scan directory for remaining tags after unpack.
+
+    Rescans all walkable files for TAG_RE matches and classifies them
+    as resolvable (still in vault — shouldn't remain) or unresolvable
+    (orphaned tags from another project/session).
+
+    Args:
+        root: Directory root to scan
+
+    Returns:
+        {
+            "tags_found": int,
+            "tags_resolved": int,
+            "tags_unresolvable": int,
+            "unresolvable_files": [(rel_path, count), ...],
+        }
+    """
+    vault = Vault(root)
+    ignores = load_ignores(root)
+
+    tags_found = 0
+    tags_resolved = 0
+    tags_unresolvable = 0
+    unresolvable_files: List[Tuple[str, int]] = []
+
+    for path in iter_files(root, ignores):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except (OSError, IOError, PermissionError):
+            continue
+
+        file_unresolvable = 0
+        for m in TAG_RE.finditer(text):
+            tag = m.group(1)
+            tags_found += 1
+            if vault.secret_for(tag) is not None:
+                tags_resolved += 1
+            else:
+                tags_unresolvable += 1
+                file_unresolvable += 1
+
+        if file_unresolvable > 0:
+            rel = os.path.relpath(path, root)
+            unresolvable_files.append((rel, file_unresolvable))
+
+    return {
+        "tags_found": tags_found,
+        "tags_resolved": tags_resolved,
+        "tags_unresolvable": tags_unresolvable,
+        "unresolvable_files": unresolvable_files,
+    }
+
+
+# ── R5: Session manifest ─────────────────────────────────────────
+
+
+def _file_sha256(path: str) -> str:
+    """Compute SHA-256 hex digest for a file."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def build_manifest(root: str, ignores: List[str]) -> Dict[str, Any]:
+    """Build a file manifest (sha256 hash + size) for all walkable files.
+
+    Called after pack_dir to snapshot the project state at session start.
+
+    Args:
+        root: Project root directory
+        ignores: Glob patterns to skip
+
+    Returns:
+        {
+            "ts": ISO timestamp,
+            "files": { rel_path: {"sha256": ..., "size": ...}, ... },
+            "total_files": int,
+        }
+    """
+    files: Dict[str, Dict[str, Any]] = {}
+
+    for path in iter_files(root, ignores):
+        try:
+            rel = os.path.relpath(path, root)
+            sha = _file_sha256(path)
+            size = os.path.getsize(path)
+            files[rel] = {"sha256": sha, "size": size}
+        except (OSError, IOError, PermissionError):
+            continue
+
+    return {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "files": files,
+        "total_files": len(files),
+    }
+
+
+def compute_delta(
+    manifest: Dict[str, Any], root: str, ignores: List[str]
+) -> Dict[str, Any]:
+    """Compare current file state against a pack-time manifest.
+
+    Identifies files that were created, deleted, or changed during the session.
+
+    Args:
+        manifest: The manifest dict from build_manifest()
+        root: Project root directory
+        ignores: Glob patterns to skip
+
+    Returns:
+        {
+            "new_files": [rel_path, ...],
+            "deleted_files": [rel_path, ...],
+            "changed_files": [rel_path, ...],
+            "unchanged_count": int,
+        }
+    """
+    old_files = manifest.get("files", {})
+
+    # Build current file set
+    current_files: Dict[str, str] = {}
+    for path in iter_files(root, ignores):
+        try:
+            rel = os.path.relpath(path, root)
+            current_files[rel] = _file_sha256(path)
+        except (OSError, IOError, PermissionError):
+            continue
+
+    old_set = set(old_files.keys())
+    cur_set = set(current_files.keys())
+
+    new_files = sorted(cur_set - old_set)
+    deleted_files = sorted(old_set - cur_set)
+    changed_files = sorted(
+        f for f in (old_set & cur_set)
+        if current_files[f] != old_files[f]["sha256"]
+    )
+    unchanged_count = len(old_set & cur_set) - len(changed_files)
+
+    return {
+        "new_files": new_files,
+        "deleted_files": deleted_files,
+        "changed_files": changed_files,
+        "unchanged_count": unchanged_count,
+    }

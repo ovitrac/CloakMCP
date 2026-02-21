@@ -190,4 +190,5 @@ codex_*
 
 # CloakMCP session state
 .cloak-session-state
+.cloak-session-manifest.json
 .cloak-session-audit.jsonl

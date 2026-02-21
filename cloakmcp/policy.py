@@ -32,6 +32,7 @@ class Rule:
     whitelist_cidrs: Optional[List[str]] = None
     min_entropy: Optional[float] = None
     min_length: Optional[int] = None
+    severity: Optional[str] = None
 
 class Policy:
     def __init__(self, raw: Dict[str, Any]) -> None:
@@ -65,6 +66,7 @@ class Policy:
                     whitelist_cidrs=r.get("whitelist_cidrs"),
                     min_entropy=r.get("min_entropy"),
                     min_length=r.get("min_length"),
+                    severity=r.get("severity"),
                 )
             )
 
@@ -210,6 +212,7 @@ def _policy_to_dict(policy: Policy) -> Dict[str, Any]:
                 "whitelist_cidrs": rule.whitelist_cidrs,
                 "min_entropy": rule.min_entropy,
                 "min_length": rule.min_length,
+                "severity": rule.severity,
             }
             for rule in policy.rules
         ],
@@ -344,6 +347,9 @@ def validate_policy(path: str) -> tuple[bool, List[str]]:
 
         if rule.action == "replace_with_template" and not rule.template:
             errors.append(f"Rule '{rule.id}': replace_with_template requires 'template' field")
+
+        if rule.severity is not None and rule.severity not in ("critical", "high", "medium", "low"):
+            errors.append(f"Rule '{rule.id}': invalid severity '{rule.severity}' (must be critical/high/medium/low)")
 
     # Validate pseudonymization config
     if policy.globals.pz.method not in ["hmac-sha256"]:

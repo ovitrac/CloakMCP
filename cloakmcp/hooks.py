@@ -18,7 +18,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from .dirpack import pack_dir, unpack_dir
+from .dirpack import pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta, load_ignores
 from .filepack import pack_text, TAG_RE
 from .policy import Policy
 from .scanner import scan
@@ -26,6 +26,7 @@ from .normalizer import normalize
 from .storage import Vault
 
 SESSION_STATE_FILE = ".cloak-session-state"
+SESSION_MANIFEST_FILE = ".cloak-session-manifest.json"
 AUDIT_FILE = ".cloak-session-audit.jsonl"
 DEFAULT_POLICY = "examples/mcp_policy.yaml"
 DEFAULT_PREFIX = "TAG"
@@ -107,6 +108,32 @@ def _remove_state(project_dir: str) -> None:
         os.remove(state_path)
 
 
+def _write_manifest(project_dir: str, manifest: Dict[str, Any]) -> None:
+    """Write session manifest JSON."""
+    path = os.path.join(project_dir, SESSION_MANIFEST_FILE)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False)
+
+
+def _read_manifest(project_dir: str) -> Optional[Dict[str, Any]]:
+    """Read session manifest. Returns None if absent."""
+    path = os.path.join(project_dir, SESSION_MANIFEST_FILE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _remove_manifest(project_dir: str) -> None:
+    """Remove session manifest file."""
+    path = os.path.join(project_dir, SESSION_MANIFEST_FILE)
+    if os.path.isfile(path):
+        os.remove(path)
+
+
 def _now_iso() -> str:
     """Return current UTC timestamp in ISO 8601 format."""
     return datetime.now(timezone.utc).isoformat()
@@ -170,6 +197,12 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
         policy = Policy.load(policy_path)
         pack_dir(project_dir, policy, prefix=prefix, backup=True)
         _write_state(project_dir, policy_path, prefix)
+        # R5: write session manifest (file hashes at pack time)
+        ignores = load_ignores(project_dir)
+        manifest = build_manifest(project_dir, ignores)
+        manifest["policy"] = policy_path
+        manifest["prefix"] = prefix
+        _write_manifest(project_dir, manifest)
     except Exception as e:
         return {
             "additionalContext": (
@@ -178,20 +211,30 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
             )
         }
 
-    _append_audit(project_dir, {"event": "session_pack", "policy": policy_path, "prefix": prefix})
+    _append_audit(project_dir, {
+        "event": "session_pack",
+        "policy": policy_path,
+        "prefix": prefix,
+        "manifest_files": manifest.get("total_files", 0),
+    })
 
     return {
         "additionalContext": (
             "[CloakMCP] Session started. All files have been packed — "
             "secrets replaced by deterministic tags (TAG-xxxxxxxxxxxx). "
             "Do NOT manually alter tag syntax. "
-            "Secrets will be restored automatically when the session ends."
+            "Secrets will be restored automatically when the session ends. "
+            "IMPORTANT: Hooks protect files on disk and user prompts. "
+            "Do not embed secrets in tool arguments or filenames."
         )
     }
 
 
 def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
     """Handle SessionEnd hook: unpack directory and remove state marker.
+
+    After unpack, runs R4 verification (tag residue scan) and R5 delta
+    computation (new/deleted/changed files). Results are written to audit.
 
     Returns:
         Hook response JSON (empty on success)
@@ -202,6 +245,9 @@ def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
     if state is None:
         # Not packed — nothing to do
         return {}
+
+    # Read manifest before unpack (R5)
+    manifest = _read_manifest(project_dir)
 
     try:
         unpack_dir(project_dir, backup=False)
@@ -214,20 +260,68 @@ def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
         )
         return {}
 
-    _append_audit(project_dir, {"event": "session_unpack"})
+    # R4: post-unpack verification
+    verification = verify_unpack(project_dir)
+
+    # R5: compute delta against pack-time manifest
+    delta: Dict[str, Any] = {}
+    if manifest is not None:
+        ignores = load_ignores(project_dir)
+        delta = compute_delta(manifest, project_dir, ignores)
+
+    # Audit: combined session_unpack event
+    audit_event: Dict[str, Any] = {"event": "session_unpack"}
+    audit_event["verification"] = {
+        "tags_found": verification["tags_found"],
+        "tags_resolved": verification["tags_resolved"],
+        "tags_unresolvable": verification["tags_unresolvable"],
+    }
+    if delta:
+        audit_event["delta"] = {
+            "new_files": len(delta.get("new_files", [])),
+            "deleted_files": len(delta.get("deleted_files", [])),
+            "changed_files": len(delta.get("changed_files", [])),
+            "unchanged_count": delta.get("unchanged_count", 0),
+        }
+
+    _append_audit(project_dir, audit_event)
+
+    # Clean up manifest
+    _remove_manifest(project_dir)
+
+    # Warn on residual tags
+    if verification["tags_unresolvable"] > 0:
+        files_list = ", ".join(
+            f[0] for f in verification["unresolvable_files"][:5]
+        )
+        print(
+            f"[CloakMCP] WARNING: {verification['tags_unresolvable']} "
+            f"unresolvable tag(s) remain in: {files_list}",
+            file=sys.stderr,
+        )
 
     return {}
+
+
+def _effective_severity(rule: Any) -> str:
+    """Return the effective severity of a rule (default: medium)."""
+    return rule.severity if rule.severity else "medium"
 
 
 def handle_guard_write(project_dir: str = ".") -> Dict[str, Any]:
     """Handle PreToolUse guard for Write/Edit: scan content for raw secrets.
 
     Reads Claude hook JSON from stdin, extracts file content,
-    scans for secrets, and emits a warning if any are found.
-    This is advisory only — never blocks the operation.
+    scans for secrets, and enforces deny on critical/high severity matches.
+    Medium/low severity matches produce advisory warnings only.
+
+    With CLOAK_STRICT=1, medium severity also triggers deny.
 
     Returns:
-        Hook response JSON (with additionalContext warning if secrets found)
+        Hook response JSON:
+        - hookSpecificOutput with deny if critical/high secrets found
+        - additionalContext warning if only medium/low secrets found
+        - empty dict if clean
     """
     project_dir = os.path.abspath(project_dir)
 
@@ -260,19 +354,151 @@ def handle_guard_write(project_dir: str = ".") -> Dict[str, Any]:
     if not matches:
         return {}
 
-    # Build warning with match summary (no secret values exposed)
-    rule_ids = sorted({m.rule.id for m in matches})
+    # Partition matches by severity
+    deny_severities = {"critical", "high"}
+    if os.environ.get("CLOAK_STRICT") == "1":
+        deny_severities = {"critical", "high", "medium"}
+
+    high = [m for m in matches if _effective_severity(m.rule) in deny_severities]
+    low = [m for m in matches if _effective_severity(m.rule) not in deny_severities]
+
+    if high:
+        # Deny: block the write operation
+        rule_ids = sorted({m.rule.id for m in high})
+        severities = sorted({_effective_severity(m.rule) for m in high})
+
+        _append_audit(project_dir, {
+            "event": "guard_deny",
+            "match_count": len(high),
+            "rule_ids": rule_ids,
+            "severities": severities,
+            "decision": "deny",
+        })
+
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    f"[CloakMCP Guard] Blocked: {len(high)} high-severity secret(s) "
+                    f"detected (rules: {', '.join(rule_ids)}). "
+                    "Use vault tags instead of raw values."
+                ),
+            }
+        }
+
+    # Warn only (medium/low severity)
+    rule_ids = sorted({m.rule.id for m in low})
 
     _append_audit(project_dir, {
         "event": "guard_trigger",
-        "match_count": len(matches),
+        "match_count": len(low),
         "rule_ids": rule_ids,
+        "decision": "warn",
     })
 
     return {
         "additionalContext": (
-            f"[CloakMCP] WARNING: {len(matches)} potential secret(s) detected "
+            f"[CloakMCP] WARNING: {len(low)} potential secret(s) detected "
             f"in content being written (rules: {', '.join(rule_ids)}). "
+            "Consider using vault tags instead of raw values."
+        )
+    }
+
+
+def handle_prompt_guard(project_dir: str = ".") -> Dict[str, Any]:
+    """Handle UserPromptSubmit hook: scan user prompts for secrets.
+
+    Reads Claude hook JSON from stdin, extracts the prompt text,
+    scans for secrets, and blocks (critical/high) or warns (medium/low).
+
+    Block response uses ``decision: "block"`` + ``reason`` (prompt is erased).
+    Warn response uses ``additionalContext`` (advisory only).
+
+    Env vars:
+        CLOAK_PROMPT_GUARD=off  — disable entirely (return {})
+        CLOAK_STRICT=1          — medium also triggers block
+
+    Returns:
+        Hook response JSON:
+        - decision: block + reason if critical/high secrets
+        - additionalContext warning if only medium/low secrets
+        - empty dict if clean or disabled
+    """
+    # Check kill-switch
+    if os.environ.get("CLOAK_PROMPT_GUARD", "").lower() == "off":
+        return {}
+
+    project_dir = os.path.abspath(project_dir)
+
+    # Parse hook input JSON
+    hook_input = _read_stdin_json()
+    if hook_input is None:
+        return {}
+
+    # Extract prompt text
+    prompt = hook_input.get("prompt", "")
+    if not prompt:
+        return {}
+
+    # Find policy
+    policy_path = _find_policy()
+    if not policy_path:
+        return {}
+
+    try:
+        policy = Policy.load(policy_path)
+        norm = normalize(prompt)
+        matches = scan(norm, policy)
+    except Exception:
+        return {}
+
+    if not matches:
+        return {}
+
+    # Partition matches by severity
+    deny_severities = {"critical", "high"}
+    if os.environ.get("CLOAK_STRICT") == "1":
+        deny_severities = {"critical", "high", "medium"}
+
+    high = [m for m in matches if _effective_severity(m.rule) in deny_severities]
+    low = [m for m in matches if _effective_severity(m.rule) not in deny_severities]
+
+    if high:
+        rule_ids = sorted({m.rule.id for m in high})
+        severities = sorted({_effective_severity(m.rule) for m in high})
+
+        _append_audit(project_dir, {
+            "event": "prompt_deny",
+            "match_count": len(high),
+            "rule_ids": rule_ids,
+            "severities": severities,
+            "decision": "block",
+        })
+
+        return {
+            "decision": "block",
+            "reason": (
+                f"[CloakMCP] Prompt blocked: {len(high)} high-severity secret(s) "
+                f"detected (rules: {', '.join(rule_ids)}). "
+                "Remove secrets and use vault tags (TAG-xxxx) instead."
+            ),
+        }
+
+    # Warn only (medium/low severity)
+    rule_ids = sorted({m.rule.id for m in low})
+
+    _append_audit(project_dir, {
+        "event": "prompt_warn",
+        "match_count": len(low),
+        "rule_ids": rule_ids,
+        "decision": "warn",
+    })
+
+    return {
+        "additionalContext": (
+            f"[CloakMCP] WARNING: {len(low)} potential secret(s) detected "
+            f"in prompt (rules: {', '.join(rule_ids)}). "
             "Consider using vault tags instead of raw values."
         )
     }
@@ -404,13 +630,15 @@ def dispatch_hook(event: str, project_dir: str = ".") -> None:
     """Dispatch hook event to appropriate handler.
 
     Args:
-        event: One of 'session-start', 'session-end', 'guard-write'
+        event: One of 'session-start', 'session-end', 'guard-write',
+               'prompt-guard', 'safety-guard', 'audit-log'
         project_dir: Project root directory
     """
     handlers = {
         "session-start": handle_session_start,
         "session-end": handle_session_end,
         "guard-write": handle_guard_write,
+        "prompt-guard": handle_prompt_guard,
         "safety-guard": handle_safety_guard,
         "audit-log": handle_audit_log,
     }

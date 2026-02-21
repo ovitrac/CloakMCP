@@ -201,6 +201,7 @@ HOOK_SCRIPTS=(
     "cloak-session-start.sh"
     "cloak-session-end.sh"
     "cloak-guard-write.sh"
+    "cloak-prompt-guard.sh"
     "cloak-audit-logger.sh"
 )
 

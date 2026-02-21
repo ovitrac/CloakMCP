@@ -23,6 +23,17 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cloak-prompt-guard.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit",

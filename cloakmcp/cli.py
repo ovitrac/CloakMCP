@@ -152,7 +152,7 @@ def main() -> None:
 
     s_hook = sub.add_parser("hook", help="Handle Claude Code hook events")
     s_hook.add_argument("event", choices=["session-start", "session-end", "guard-write",
-                                          "safety-guard", "audit-log"],
+                                          "prompt-guard", "safety-guard", "audit-log"],
                         help="Hook event type")
     s_hook.add_argument("--dir", default=".", help="Project root directory")
 
@@ -160,6 +160,16 @@ def main() -> None:
 
     s_recover = sub.add_parser("recover", help="Detect stale session state and run unpack")
     s_recover.add_argument("--dir", default=".", help="Project root directory")
+
+    # ── v0.5.1: stdin sanitization helper ──────────────────────
+
+    s_stdin = sub.add_parser("sanitize-stdin", help="Sanitize text from stdin → stdout")
+    s_stdin.add_argument("--policy", required=True, help="Path to YAML policy file")
+
+    # ── v0.5.1: post-unpack verification ─────────────────────
+
+    s_verify = sub.add_parser("verify", help="Scan for residual tags after unpack")
+    s_verify.add_argument("--dir", required=True, help="Directory to verify")
 
     # ── Dispatch ────────────────────────────────────────────────
 
@@ -307,6 +317,17 @@ def main() -> None:
             sys.exit(1)
         sys.exit(0)
 
+    if args.cmd == "sanitize-stdin":
+        _validate_policy_path(args.policy)
+        policy = Policy.load(args.policy)
+        text = sys.stdin.read()
+        out, blocked = sanitize_text(text, policy, dry_run=False)
+        if blocked:
+            print("ERROR: one or more blocked secrets detected; refusing to output.", file=sys.stderr)
+            sys.exit(2)
+        sys.stdout.write(out)
+        return
+
     if args.cmd == "hook":
         from .hooks import dispatch_hook
         dispatch_hook(args.event, project_dir=args.dir)
@@ -317,6 +338,22 @@ def main() -> None:
         _validate_dir_path(args.dir, "directory")
         handle_recover(project_dir=args.dir)
         return
+
+    if args.cmd == "verify":
+        from .dirpack import verify_unpack
+        _validate_dir_path(args.dir, "directory")
+        result = verify_unpack(args.dir)
+        print(f"Verification for: {args.dir}", file=sys.stderr)
+        print(f"  Tags found:        {result['tags_found']}", file=sys.stderr)
+        print(f"  Tags resolved:     {result['tags_resolved']}", file=sys.stderr)
+        print(f"  Tags unresolvable: {result['tags_unresolvable']}", file=sys.stderr)
+        if result["unresolvable_files"]:
+            print("  Files with unresolvable tags:", file=sys.stderr)
+            for rel_path, count in result["unresolvable_files"]:
+                print(f"    {rel_path}: {count} tag(s)", file=sys.stderr)
+        if result["tags_unresolvable"] > 0:
+            sys.exit(1)
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

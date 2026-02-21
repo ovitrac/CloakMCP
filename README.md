@@ -11,8 +11,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.5.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.5.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-173%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#claude-code-integration)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -121,6 +121,9 @@ When Claude Code starts a session, CloakMCP **automatically packs** all files. W
     "SessionEnd": [{
       "hooks": [{"type": "command", "command": ".claude/hooks/cloak-session-end.sh"}]
     }],
+    "UserPromptSubmit": [{
+      "hooks": [{"type": "command", "command": ".claude/hooks/cloak-prompt-guard.sh"}]
+    }],
     "PreToolUse": [{
       "matcher": "Write|Edit",
       "hooks": [{"type": "command", "command": ".claude/hooks/cloak-guard-write.sh"}]
@@ -129,7 +132,7 @@ When Claude Code starts a session, CloakMCP **automatically packs** all files. W
 }
 ```
 
-The **PreToolUse guard** also scans any content Claude tries to write — and warns if raw secrets appear in generated code.
+The **UserPromptSubmit guard** scans every user message for secrets — blocking critical/high and warning on medium/low. The **PreToolUse guard** scans content Claude tries to write — and denies if raw secrets appear in generated code.
 
 ### 2. MCP Tool Server — 6 Tools for Claude
 
@@ -197,7 +200,9 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
 | `cloak unpack --dir DIR` | Restore original secrets from local vault |
 | `cloak policy validate --policy POL` | Validate policy file (including inheritance chain) |
 | `cloak policy show --policy POL` | Show merged policy after inheritance resolution |
-| `cloak hook <event>` | Handle Claude Code hooks (session-start, session-end, guard-write) |
+| `cloak sanitize-stdin --policy POL` | Sanitize text from stdin to stdout (pipe helper) |
+| `cloak verify --dir DIR` | Post-unpack verification: scan for residual tags |
+| `cloak hook <event>` | Handle Claude Code hooks (session-start, session-end, guard-write, prompt-guard) |
 | `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio) |
 
 ---
@@ -383,6 +388,24 @@ sequenceDiagram
 4. **Encryption protects vault** — Even if vault file leaks, attacker needs encryption key
 5. **Keys are separate** — Vault + key both required for decryption
 
+### Protection Boundaries
+
+CloakMCP protects **files at rest**, **tool writes**, and **user prompts**.
+
+| Boundary | Protected? | Mechanism |
+|----------|-----------|-----------|
+| Files on disk | Yes | `pack` at session start, `unpack` at session end |
+| Write/Edit tool calls | Yes | `guard-write` hook denies high-severity secrets |
+| Bash commands | Yes | `safety-guard` hook blocks dangerous commands |
+| User prompts | Yes | `prompt-guard` hook blocks/warns on secrets in prompts |
+| Chat after prompt | No | Prompt guard scans user input, not model responses |
+| Clipboard / copy-paste | No | Use `cloak sanitize-stdin` before pasting sensitive content |
+
+> **Tip:** Pipe text through `cloak sanitize-stdin --policy examples/mcp_policy.yaml` before pasting.
+> Use vault tags (`TAG-xxxxxxxxxxxx`) when referring to credentials.
+>
+> **Why no output filtering?** The conversation operates entirely in tag-space by design. Rehydrating Claude's responses would create a cleartext/tag split that breaks on the next turn. See [`SECURITY.md`](SECURITY.md#dried-channel-architecture) for the full rationale.
+
 ### Data Flow Comparison
 
 #### Without CloakMCP
@@ -491,6 +514,16 @@ keys/
 .git/
 ```
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLOAK_POLICY` | `examples/mcp_policy.yaml` | Path to the YAML policy file used by hooks |
+| `CLOAK_PREFIX` | `TAG` | Tag prefix for pack operations (e.g., `TAG`, `SEC`, `KEY`) |
+| `CLOAK_STRICT` | *(unset)* | Set to `1` to treat medium-severity matches as blocking (hooks escalate warn → deny/block) |
+| `CLOAK_PROMPT_GUARD` | *(enabled)* | Set to `off` to disable the UserPromptSubmit hook entirely |
+| `CLOAK_AUDIT_TOOLS` | *(unset)* | Set to `1` to enable Tier 2 tool metadata logging (hashed file paths) |
+
 ---
 
 ## Group Policies
@@ -560,14 +593,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (115 passing)
+# Run all tests (173 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 115+ tests across 6 test files covering unit tests, integration tests, API tests, hook tests, and MCP server tests.
+**Test suite**: 173+ tests across 6 test files covering unit tests, integration tests, API tests, hook tests, and MCP server tests.
 
 ---
 
@@ -590,7 +623,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (115+ tests, 6 files)
+├── tests/                         # Test suite (173+ tests, 6 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
@@ -674,7 +707,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 **Changed**:
 - **Package renamed**: `mcp/` → `cloakmcp/` (avoids conflict with Anthropic's `mcp` package)
 - **Entry points**: `cloak = cloakmcp.cli:main`, `cloak-mcp-server = cloakmcp.mcp_server:main`
-- **Test suite expanded**: 90+ → 115+ tests across 6 test files
+- **Test suite expanded**: 90+ → 173+ tests across 6 test files
 
 **Fixed**:
 - **Overlapping match deduplication**: Prevents round-trip corruption when multiple scanner rules match overlapping text spans
