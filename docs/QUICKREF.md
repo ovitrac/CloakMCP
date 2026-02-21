@@ -1,115 +1,172 @@
-# CloakMCP Quick Reference Card
+# CloakMCP Quick Reference
 
-**Version**: 0.3.2 | **One-page cheat sheet for daily use**
+**Version**: 0.6.0 | **Cheat sheet for daily use**
 
 ---
 
-## 🚀 Quick Setup (First Time)
+## Setup (first time only)
 
 ```bash
-# 1. Install
 pip install -e .
-
-# 2. Generate keys
-mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
-
-# 3. Test
-cloak scan --policy examples/mcp_policy.yaml --input README.md
+mkdir -p keys audit && openssl rand -hex 32 > keys/mcp_hmac_key && chmod 600 keys/*
 ```
 
 ---
 
-## ⌨️ VS Code Shortcuts
+## CLI Commands
 
-| Shortcut       | Action                            |
-| -------------- | --------------------------------- |
-| `Ctrl+Alt+S`   | Sanitize current file (preview)   |
-| `Ctrl+Alt+A`   | Scan current file (audit only)    |
+### Core workflow
 
----
-
-## 🔧 CLI Commands
-
-### Scan (no modification)
 ```bash
+# Scan (detect, no changes)
 cloak scan --policy examples/mcp_policy.yaml --input file.py
+
+# Pack directory (replace secrets with tags)
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+
+# Unpack directory (restore secrets from vault)
+cloak unpack --dir .
+
+# Verify (check no residual tags after unpack)
+cloak verify --dir .
 ```
 
-### Sanitize (preview to stdout)
+### Single-file operations
+
 ```bash
+# Sanitize to stdout
 cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output -
-```
 
-### Sanitize (overwrite file)
-```bash
+# Sanitize in place
 cloak sanitize --policy examples/mcp_policy.yaml --input file.py --output file.py
+
+# Pack single file
+cloak pack-file --policy examples/mcp_policy.yaml --file config.yaml --prefix TAG
+
+# Unpack single file
+cloak unpack-file --file config.yaml
 ```
 
-### Pack directory (anonymize all files)
+### Incremental repack
+
 ```bash
-cloak pack --policy examples/mcp_policy.yaml --dir /path/to/project --prefix TAG
+# Re-scan and pack only new/changed files (no full re-pack needed)
+cloak repack --policy examples/mcp_policy.yaml --dir .
 ```
 
-### Unpack directory (restore secrets)
-```bash
-cloak unpack --dir /path/to/project
-```
+### Policy management
 
-### Policy management (NEW in v0.3.2)
 ```bash
-# Validate policy (with inheritance)
+# Validate policy (checks inheritance chain)
 cloak policy validate --policy examples/mcp_policy.yaml
 
-# Show merged policy (after inheritance)
+# Show merged policy after inheritance resolution
 cloak policy show --policy examples/mcp_policy.yaml --format yaml
 cloak policy show --policy examples/mcp_policy.yaml --format json
 ```
 
----
+### Vault management
 
-## 🔐 Vault Locations
-
-- **Keys**: `~/.cloakmcp/keys/<project-slug>.key`
-- **Vaults**: `~/.cloakmcp/vaults/<project-slug>.vault`
-- **Audit**: `./audit/audit.jsonl`
-
-**Slug**: First 16 chars of SHA-256(absolute project path)
-
----
-
-## 🌐 API Server (Optional)
-
-### Start server
 ```bash
-openssl rand -hex 32 > keys/mcp_api_token  # Once
-uvicorn cloak.server:app --host 127.0.0.1 --port 8765
+# Show vault stats (entry count, project slug)
+cloak vault-stats --dir .
+
+# Export vault to encrypted backup
+cloak vault-export --dir . --output vault-backup.enc
+
+# Import vault from backup
+cloak vault-import --backup vault-backup.enc --dir .
 ```
 
-### Health check
+### Session recovery
+
 ```bash
-curl -H "Authorization: Bearer $(cat keys/mcp_api_token)" \
-  http://127.0.0.1:8765/health
+# Recover from crashed session (stale .cloak-session-state)
+cloak recover --dir .
 ```
 
-### Sanitize via API
+### Pipes and guards
+
 ```bash
-curl -H "Authorization: Bearer $(cat keys/mcp_api_token)" \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Email: test@example.com","dry_run":false}' \
-  http://127.0.0.1:8765/sanitize
+# Sanitize from stdin (for pipes)
+echo "secret: AKIAABCDEFGHIJKLMNOP" | cloak sanitize-stdin --policy examples/mcp_policy.yaml
+
+# Guard: exit 1 if stdin contains secrets (for pre-commit)
+echo "some text" | cloak guard --policy examples/mcp_policy.yaml
 ```
 
 ---
 
-## 📝 Policy YAML Quick Reference
+## VS Code Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Alt+S` | Sanitize current file (preview in terminal) |
+| `Ctrl+Alt+A` | Scan current file (audit only) |
+
+---
+
+## Claude Code Hooks
+
+### Install
+
+```bash
+scripts/install_claude.sh                    # default: secrets-only profile
+scripts/install_claude.sh --profile hardened  # + Bash safety guard
+scripts/install_claude.sh --dry-run           # preview only
+scripts/install_claude.sh --uninstall         # remove hooks
+```
+
+### Hook lifecycle
+
+| Event | When | What it does |
+|-------|------|-------------|
+| SessionStart | `claude` starts | `cloak pack`, writes session state + manifest |
+| SessionEnd | `claude` exits | `cloak unpack`, verifies integrity, computes delta |
+| UserPromptSubmit | Every prompt | Warns if prompt contains raw secrets |
+| PreToolUse (Write/Edit) | Before file writes | Blocks writes containing secrets |
+| PreToolUse (Bash) | Before shell commands | Blocks dangerous commands (hardened only) |
+| PostToolUse | After tool runs | Audit log + optional repack |
+
+### Verify hooks are active
+
+```bash
+ls .claude/hooks/                    # 5-6 scripts present?
+cat .claude/settings.local.json      # hooks configured?
+ls .cloak-session-state              # exists = session is packed
+tail -5 .cloak-session-audit.jsonl   # recent audit events
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CLOAK_POLICY` | `examples/mcp_policy.yaml` | Policy file for hooks/MCP |
+| `CLOAK_PREFIX` | `TAG` | Tag prefix |
+| `CLOAK_STRICT` | off | `1` = medium severity becomes blocking |
+| `CLOAK_PROMPT_GUARD` | on | `off` = disable prompt guard |
+| `CLOAK_REPACK_ON_WRITE` | off | `1` = auto-repack after Write/Edit |
+| `CLOAK_AUDIT_TOOLS` | off | `1` = log all tool usage |
+
+---
+
+## Policy Profiles
+
+| Profile | File | Rules |
+|---------|------|-------|
+| Default | `examples/mcp_policy.yaml` | 10 (AWS, GCP, SSH, PEM, JWT, email, IP, URL, entropy) |
+| Enterprise | `examples/mcp_policy_enterprise.yaml` | 26 (+ GitHub, GitLab, Slack, Stripe, npm, Azure, ...) |
+
+### Policy YAML structure
 
 ```yaml
 version: 1
 
-# NEW in v0.3.2: Inherit from parent policies
-inherits:
+inherits:                          # Optional: inherit from parent policies
   - ~/.cloakmcp/policies/company-baseline.yaml
-  - ~/.cloakmcp/policies/team-backend.yaml
+  - team-policy.yaml               # relative paths supported
 
 globals:
   default_action: redact
@@ -119,117 +176,78 @@ globals:
 
 detection:
   - id: my_rule
-    type: regex           # or: ipv4, ipv6, url, entropy
-    pattern: 'regex_here'
-    action: redact        # or: block, pseudonymize, hash, allow, replace_with_template
-    template: '<TAG:{hash8}>'  # for replace_with_template
-    whitelist: ['allowed@domain.com']
+    type: regex                    # regex | ipv4 | ipv6 | url | entropy
+    pattern: 'PATTERN'
+    action: redact                 # redact | block | pseudonymize | hash | allow | replace_with_template
+    severity: high                 # critical | high | medium | low
+    template: '<TAG:{hash8}>'      # for replace_with_template action
+    whitelist: ['safe@example.com']
     whitelist_cidrs: ['10.0.0.0/8']
+    whitelist_patterns: ['pattern'] # entropy rules only
 ```
 
-### Policy Inheritance (NEW in v0.3.2)
+### Actions
 
-```yaml
-# Inherit detection rules from company/team policies
-inherits:
-  - ~/.cloakmcp/policies/company-baseline.yaml  # Applied first
-  - relative/path/team-policy.yaml              # Overrides company
-  # Current file rules override all parents
-```
+| Action | Effect | Reversible? |
+|--------|--------|-------------|
+| `redact` | Replace with `<REDACTED:rule_id>` | No |
+| `block` | Refuse to process (exit 1) | N/A |
+| `pseudonymize` | HMAC-based token (`PZ-xxx`) | With key |
+| `hash` | SHA-256 hash (`HASH-xxx`) | No |
+| `allow` | Keep unchanged | N/A |
+| `replace_with_template` | Custom template | Depends |
 
-**Key points**:
-- Policies share **rules**, NOT encryption keys
-- Later policies override earlier ones (for rules with same ID)
-- Use `cloak policy validate` to see full inheritance chain
-- Supports tilde (`~`) and relative paths
+### Severity levels (hook enforcement)
 
-### Action Types
+| Severity | Default | With `CLOAK_STRICT=1` |
+|----------|---------|----------------------|
+| `critical` | Deny (block) | Deny |
+| `high` | Deny (block) | Deny |
+| `medium` | Warn | Deny |
+| `low` | Warn | Warn |
 
-| Action                     | Effect                                    |
-| -------------------------- | ----------------------------------------- |
-| `redact`                   | Replace with `<REDACTED:rule_id>`         |
-| `block`                    | Refuse to process (exit with error)       |
-| `pseudonymize`             | Replace with HMAC-based token (`PZ-xxx`)  |
-| `hash`                     | Replace with SHA-256 hash (`HASH-xxx`)    |
-| `allow`                    | Keep unchanged                            |
-| `replace_with_template`    | Use custom template with placeholders     |
+### Inheritance rules
 
-### Rule Types
-
-| Type      | Detects                         |
-| --------- | ------------------------------- |
-| `regex`   | Custom regex pattern            |
-| `ipv4`    | IPv4 addresses                  |
-| `ipv6`    | IPv6 addresses                  |
-| `url`     | HTTP/HTTPS URLs                 |
-| `entropy` | High-entropy strings (base64)   |
+- Later policies override earlier ones (for rules with same `id`)
+- `globals`: deep merge
+- `whitelist` / `blacklist`: concatenated
+- `detection`: same-ID replacement
+- Policies share **rules**, not encryption keys
 
 ---
 
-## 🛡️ Common Workflows
+## Vault
 
-### Workflow 1: Before sharing code with LLM
-```bash
-cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
-# Share project with Claude/Codex/etc.
-# After receiving modified code:
-cloak unpack --dir .
+```
+~/.cloakmcp/
+├── keys/
+│   └── <slug>.key          # Fernet encryption key (chmod 600)
+└── vaults/
+    └── <slug>.vault        # Encrypted JSON: {TAG -> secret}
 ```
 
-### Workflow 2: Pre-commit check
-```bash
-for f in $(git diff --cached --name-only); do
-  cloak scan --policy examples/mcp_policy.yaml --input "$f" || exit 1
-done
-```
+**Slug**: first 16 chars of `SHA-256(absolute_project_path)`
 
-### Workflow 3: Sanitize before commit
-```bash
-cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
-git add .
-git commit -m "feat: new feature [MCP-SANITIZED]"
-cloak unpack --dir .  # Restore for local work
-```
+**Portability**: copy both `.key` and `.vault` to restore on another machine (same absolute path or adjust slug).
 
 ---
 
-## 🔍 Troubleshooting
+## .mcpignore
 
-| Problem                       | Solution                                          |
-| ----------------------------- | ------------------------------------------------- |
-| `cloak: command not found`      | Activate venv: `source .venv/bin/activate`        |
-| `Missing API token`           | Create: `openssl rand -hex 32 > keys/mcp_api_token` |
-| `Policy file not found`       | Use absolute path or check cwd                    |
-| Secrets not detected          | Add custom rule to policy YAML                    |
-| `InvalidToken` (vault error)  | Key mismatch; check `~/.cloakmcp/keys/`           |
-
----
-
-## 📦 .mcpignore Example
+Controls which files are skipped during pack/unpack (same syntax as `.gitignore`):
 
 ```
-# .mcpignore — similar to .gitignore
-
-# Binaries
 *.pyc
 *.so
-
-# Build artifacts
-dist/
-build/
 __pycache__/
-
-# Virtual environments
 .venv/
 venv/
 node_modules/
-
-# Media
+dist/
+build/
 *.png
 *.jpg
 *.pdf
-
-# Already sensitive
 audit/
 keys/
 .vscode/
@@ -237,59 +255,118 @@ keys/
 
 ---
 
-## 📊 Audit Log Format
+## MCP Server (tool integration)
 
-`audit/audit.jsonl` (one JSON per line):
+Configured via `.mcp.json` at project root — Claude Code discovers it automatically.
 
-```json
-{
-  "ts": "2025-11-11T16:30:00+01:00",
-  "rule_id": "email",
-  "action": "replace_with_template",
-  "blocked": false,
-  "start": 45,
-  "end": 65,
-  "value_hash": "a3b2c1d4e5f6..."
-}
-```
-
-View recent events:
-```bash
-tail -20 audit/audit.jsonl | jq
-```
+6 tools available: `cloak_scan_text`, `cloak_sanitize_text`, `cloak_pack_dir`, `cloak_unpack_dir`, `cloak_policy_show`, `cloak_vault_stats`
 
 ---
 
-## 🧪 Testing
+## REST API Server (optional)
 
 ```bash
-# Run all tests
-pytest -v
+# Generate API token (once)
+openssl rand -hex 32 > keys/mcp_api_token
 
-# Run with coverage
-pytest --cov=cloak --cov-report=html
+# Start server (localhost only)
+uvicorn cloakmcp.server:app --host 127.0.0.1 --port 8765
+```
 
-# View coverage
-xdg-open htmlcov/index.html
+```bash
+TOKEN=$(cat keys/mcp_api_token)
+
+# Health check
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/health
+
+# Sanitize text
+curl -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Email: test@example.com","dry_run":false}' \
+  http://127.0.0.1:8765/sanitize
+```
+
+API docs (when running): http://127.0.0.1:8765/docs
+
+---
+
+## Audit Log
+
+Location: `audit/audit.jsonl` (CLI) or `.cloak-session-audit.jsonl` (hooks)
+
+```bash
+# View recent events
+tail -20 audit/audit.jsonl | python3 -m json.tool
+
+# View hook audit
+tail -10 .cloak-session-audit.jsonl | python3 -m json.tool
 ```
 
 ---
 
-## 📚 Documentation
+## Common Workflows
 
-- **Full manual**: [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
-- **Test docs**: [`../tests/README.md`](../tests/README.md)
-- **Project specs**: [`../CLAUDE.md`](../CLAUDE.md)
+### Before sharing code with any LLM
+
+```bash
+cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
+# Share packed code (copy/paste, upload, git push packed branch)
+# After receiving LLM output:
+cloak unpack --dir .
+cloak verify --dir .
+```
+
+### Claude Code (automatic)
+
+```bash
+scripts/install_claude.sh    # once
+claude                       # hooks handle pack/unpack automatically
+```
+
+### Pre-commit secret scan
+
+```bash
+for f in $(git diff --cached --name-only); do
+  cloak scan --policy examples/mcp_policy.yaml --input "$f" || exit 1
+done
+```
 
 ---
 
-## 🔗 Resources
+## Troubleshooting
 
-- **API docs** (when server running): http://127.0.0.1:8765/docs
-- **License**: MIT (see `LICENSE`)
-- **Author**: Olivier Vitrac — Adservio Innovation Lab
-- **Version**: 0.3.2 (alpha)
+| Problem | Fix |
+|---------|-----|
+| `cloak: command not found` | `source .venv/bin/activate` |
+| No secrets detected | Check policy path and `.mcpignore` |
+| Hooks not firing | Run `scripts/install_claude.sh`, check `.claude/settings.local.json` |
+| `InvalidToken` on unpack | Vault key mismatch — check `~/.cloakmcp/keys/` |
+| Tags remain after unpack | `cloak verify --dir .` to find them |
+| Session stuck (packed) | `cloak recover --dir .` |
+| Double-tagging | Safe since v0.6.0 (idempotency guard) |
 
 ---
 
-**💡 Remember**: Always `pack` before sharing, never commit `keys/`
+## Testing
+
+```bash
+pip install -e ".[test]"     # install test dependencies
+pytest -v                     # run all tests (214+)
+pytest --cov=cloakmcp         # with coverage
+```
+
+---
+
+## Links
+
+- [QUICKSTART.md](QUICKSTART.md) — first-time setup guide with FAQ
+- [VSCODE_MANUAL.md](VSCODE_MANUAL.md) — VS Code integration
+- [SERVER.md](SERVER.md) — REST API server details
+- [GROUP_POLICY_IMPLEMENTATION.md](GROUP_POLICY_IMPLEMENTATION.md) — policy inheritance
+- [THREAT_MODEL.md](THREAT_MODEL.md) — security analysis
+- [../SECURITY.md](../SECURITY.md) — security policy and disclosure
+- [../demo/README.md](../demo/README.md) — live demo scripts
+
+---
+
+*CloakMCP v0.6.0 — Olivier Vitrac, Adservio Innovation Lab*

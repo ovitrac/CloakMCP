@@ -269,6 +269,8 @@ cd demo && bash run_demo.sh              # interactive 5-act presentation
 
 ## Quick Start
 
+> **New to CloakMCP?** See the full [Quickstart Guide](docs/QUICKSTART.md) with FAQ, compatibility matrix, and troubleshooting.
+
 ### 1. Install
 
 ```bash
@@ -661,11 +663,12 @@ CloakMCP/
 │   ├── test_policy_enterprise.py  # Enterprise policy profile tests
 │   └── test_smoke.py              # Basic smoke test
 ├── docs/                          # Developer documentation
-│   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
-│   ├── QUICKREF.md                # One-page cheat sheet for daily use
+│   ├── QUICKSTART.md              # First-time setup, FAQ, compatibility
+│   ├── QUICKREF.md                # Cheat sheet (all CLI commands)
 │   ├── SERVER.md                  # Server configuration and security model
-│   ├── THREAT_MODEL.md            # Threat model and security analysis
-│   └── VSCODE_MANUAL.md           # Complete VS Code integration guide
+│   ├── VSCODE_MANUAL.md           # Complete VS Code integration guide
+│   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
+│   └── THREAT_MODEL.md            # Threat model and security analysis
 ├── scripts/                       # Installation and hook infrastructure
 │   ├── hooks/                     # Hook shell scripts (6 tracked scripts)
 │   ├── settings/                  # Settings templates (hooks.json, hooks-hardened.json)
@@ -709,9 +712,10 @@ CloakMCP/
 | Document | Description |
 |----------|-------------|
 | **[`README.md`](README.md)** | This file (overview and quick start) |
+| **[`docs/QUICKSTART.md`](docs/QUICKSTART.md)** | First-time setup, compatibility matrix, FAQ |
+| **[`docs/QUICKREF.md`](docs/QUICKREF.md)** | Cheat sheet for daily use (all CLI commands) |
 | **[`CHANGELOG.md`](CHANGELOG.md)** | Full release history (Keep a Changelog format) |
 | **[`demo/README.md`](demo/README.md)** | Live demo guide (4 scripts, LLM + MCP) |
-| **[`docs/QUICKREF.md`](docs/QUICKREF.md)** | One-page cheat sheet for daily use |
 | **[`docs/SERVER.md`](docs/SERVER.md)** | Server configuration and security model |
 | **[`docs/VSCODE_MANUAL.md`](docs/VSCODE_MANUAL.md)** | Complete VS Code integration guide |
 | **[`docs/GROUP_POLICY_IMPLEMENTATION.md`](docs/GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
