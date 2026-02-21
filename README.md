@@ -583,7 +583,7 @@ cloak policy validate --policy examples/my-project-policy.yaml
 cloak policy show --policy examples/my-project-policy.yaml --format yaml
 ```
 
-**Full guide**: See [`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md)
+**Full guide**: See [`docs/GROUP_POLICY_IMPLEMENTATION.md`](docs/GROUP_POLICY_IMPLEMENTATION.md)
 
 ---
 
@@ -594,7 +594,7 @@ cloak policy show --policy examples/my-project-policy.yaml --format yaml
 | `Ctrl+Alt+S` | Sanitize current file (preview) |
 | `Ctrl+Alt+A` | Scan current file (audit only) |
 
-**Full guide**: See [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
+**Full guide**: See [`docs/VSCODE_MANUAL.md`](docs/VSCODE_MANUAL.md)
 
 ---
 
@@ -670,6 +670,12 @@ CloakMCP/
 │   ├── mcp_policy.yaml            # Default policy (10 rules)
 │   ├── mcp_policy_enterprise.yaml # Enterprise policy (26 rules, inherits default)
 │   └── policies/                  # Group policy examples (inheritance)
+├── docs/                          # Developer documentation
+│   ├── QUICKREF.md                # One-page cheat sheet for daily use
+│   ├── SERVER.md                  # Server configuration and security model
+│   ├── VSCODE_MANUAL.md           # Complete VS Code integration guide
+│   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
+│   └── THREAT_MODEL.md            # Threat model and security analysis
 ├── .claude/                       # Claude Code integration
 │   ├── hooks/                     # Hook scripts (session-start/end, guard-write)
 │   └── settings.local.json        # Hook + permission configuration
@@ -689,10 +695,11 @@ CloakMCP/
 | **[`README.md`](README.md)** | This file (overview and quick start) |
 | **[`CHANGELOG.md`](CHANGELOG.md)** | Full release history (Keep a Changelog format) |
 | **[`demo/README.md`](demo/README.md)** | Live demo guide (4 scripts, LLM + MCP) |
-| **[`QUICKREF.md`](QUICKREF.md)** | One-page cheat sheet for daily use |
-| **[`SERVER.md`](SERVER.md)** | Server configuration and security model |
-| **[`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)** | Complete VS Code integration guide |
-| **[`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
+| **[`docs/QUICKREF.md`](docs/QUICKREF.md)** | One-page cheat sheet for daily use |
+| **[`docs/SERVER.md`](docs/SERVER.md)** | Server configuration and security model |
+| **[`docs/VSCODE_MANUAL.md`](docs/VSCODE_MANUAL.md)** | Complete VS Code integration guide |
+| **[`docs/GROUP_POLICY_IMPLEMENTATION.md`](docs/GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
+| **[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)** | Threat model and security analysis |
 | **[`CLAUDE.md`](CLAUDE.md)** | Project specifications (for LLMs) |
 | **[`SECURITY.md`](SECURITY.md)** | Security policy, Claude Code hook security model, disclosure |
 | **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Contribution guidelines |

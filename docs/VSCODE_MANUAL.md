@@ -914,7 +914,7 @@ A: Tasks use `${workspaceFolder}/examples/mcp_policy.yaml` by default. No update
 
 ## Support & Resources
 
-- **Documentation**: `CLAUDE.md`, `README.md`, `SECURITY.md`
+- **Documentation**: [`../CLAUDE.md`](../CLAUDE.md), [`../README.md`](../README.md), [`../SECURITY.md`](../SECURITY.md)
 - **Issues**: Report bugs to Olivier Vitrac (Adservio Innovation Lab)
 - **Examples**: See `examples/` directory for policy templates and client scripts
 - **API Reference**: OpenAPI docs at `http://127.0.0.1:8765/docs` (when server running)

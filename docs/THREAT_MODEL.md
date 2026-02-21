@@ -438,7 +438,7 @@ CloakMCP uses NIST-approved algorithms:
 - **NIST Cryptographic Standards**: https://csrc.nist.gov/publications
 - **OWASP Secrets Management**: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - **CloakMCP GitHub**: https://github.com/ovitrac/CloakMCP
-- **CloakMCP Documentation**: See `README.md`, `SERVER.md`, `QUICKREF.md`
+- **CloakMCP Documentation**: See [`../README.md`](../README.md), [`SERVER.md`](SERVER.md), [`QUICKREF.md`](QUICKREF.md)
 
 ---
 

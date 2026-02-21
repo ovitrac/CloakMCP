@@ -277,11 +277,9 @@ xdg-open htmlcov/index.html
 
 ## 📚 Documentation
 
-- **Full manual**: `VSCODE_MANUAL.md`
-- **Issues report**: `ISSUES_REPORT.md`
-- **Deployment summary**: `DEPLOYMENT_SUMMARY.md`
-- **Test docs**: `tests/README.md`
-- **Project specs**: `CLAUDE.md`
+- **Full manual**: [`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)
+- **Test docs**: [`../tests/README.md`](../tests/README.md)
+- **Project specs**: [`../CLAUDE.md`](../CLAUDE.md)
 
 ---
 
