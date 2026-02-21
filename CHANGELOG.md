@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-21
+
 ### Added
 - **Enterprise policy profile** (`mcp_policy_enterprise.yaml`): 16 new provider-specific rules
   (GitHub PAT, GitLab, Slack, Stripe, npm, Heroku, Twilio, SendGrid, Azure, PKCS#8, generic
@@ -22,17 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 41 new tests: enterprise policy (26), repack and idempotency (15)
 
 ### Changed
-- **Protection boundary clarification**: "User prompts" described as "Mitigated" (requires
-  prompt-guard hook), not blanket "Protected"
+- **LLM-agnostic framing**: README restructured to present CloakMCP as LLM-agnostic with Claude
+  Code as one (first-class) integration
+- **Protection boundary clarification**: split into "Core protection (any LLM)" and "Claude Code
+  hooks" in both README and SECURITY.md
 - Session banner updated to clarify exfiltration vs inference distinction
 - Test suite expanded: 173 → 214 tests across 7 files
 - Changelog extracted from README into standalone `CHANGELOG.md`
 
 ### Documentation
-- **SECURITY.md**: new "Fundamental limitations" section (exfiltration vs inference distinction
-  with threat/coverage table)
-- **README.md**: enterprise policy section, inference limitation row, `CLOAK_REPACK_ON_WRITE`
-  env var
+- **SECURITY.md**: new "Scope" section distinguishing universal vs Claude Code hook protections;
+  new "Fundamental limitations" section (exfiltration vs inference)
+- **README.md**: LLM-agnostic overview, enterprise policy section, inference limitation row,
+  `CLOAK_REPACK_ON_WRITE` env var
 
 ## [0.5.1] - 2026-02-21
 
@@ -158,7 +162,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ovitrac/CloakMCP/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/ovitrac/CloakMCP/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ovitrac/CloakMCP/compare/v0.3.3...v0.5.0
 [0.3.3]: https://github.com/ovitrac/CloakMCP/compare/v0.3.2...v0.3.3
