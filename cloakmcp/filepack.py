@@ -49,6 +49,17 @@ def pack_text(
     if not matches:
         return norm, 0
 
+    # Idempotency guard: exclude matches overlapping existing tags.
+    # This prevents re-packing already-packed content (double-tagging).
+    existing_tags = [(m.start(), m.end()) for m in TAG_RE.finditer(norm)]
+    if existing_tags:
+        matches = [
+            m for m in matches
+            if not any(m.start < te and m.end > ts for ts, te in existing_tags)
+        ]
+        if not matches:
+            return norm, 0
+
     # Deduplicate overlapping matches to prevent corruption
     matches = _dedup_overlapping(matches)
 

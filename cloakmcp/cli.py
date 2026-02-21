@@ -166,6 +166,14 @@ def main() -> None:
     s_stdin = sub.add_parser("sanitize-stdin", help="Sanitize text from stdin → stdout")
     s_stdin.add_argument("--policy", required=True, help="Path to YAML policy file")
 
+    # ── v0.6.0: incremental re-pack ─────────────────────────
+
+    s_repack = sub.add_parser("repack", help="Incremental re-pack: scan new/changed files only")
+    s_repack.add_argument("--dir", required=True, help="Directory to process")
+    s_repack.add_argument("--policy", required=True, help="Path to YAML policy file")
+    s_repack.add_argument("--prefix", default="TAG", help="Tag prefix (e.g., TAG, SEC, KEY)")
+    s_repack.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+
     # ── v0.5.1: post-unpack verification ─────────────────────
 
     s_verify = sub.add_parser("verify", help="Scan for residual tags after unpack")
@@ -326,6 +334,32 @@ def main() -> None:
             print("ERROR: one or more blocked secrets detected; refusing to output.", file=sys.stderr)
             sys.exit(2)
         sys.stdout.write(out)
+        return
+
+    if args.cmd == "repack":
+        from .dirpack import repack_dir
+        import json as _json
+        _validate_policy_path(args.policy)
+        _validate_dir_path(args.dir, "directory")
+        policy = Policy.load(args.policy)
+        # Load session manifest if available (fast path)
+        manifest = None
+        manifest_path = os.path.join(args.dir, ".cloak-session-manifest.json")
+        if os.path.isfile(manifest_path):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    manifest = _json.load(f)
+            except (ValueError, OSError):
+                manifest = None
+        dry_run = getattr(args, 'dry_run', False)
+        result = repack_dir(args.dir, policy, prefix=args.prefix, manifest=manifest, dry_run=dry_run)
+        if not dry_run and manifest_path and os.path.isdir(args.dir):
+            # Update manifest after repack
+            from .dirpack import build_manifest, load_ignores
+            ignores = load_ignores(args.dir)
+            new_manifest = build_manifest(args.dir, ignores)
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                _json.dump(new_manifest, f, ensure_ascii=False)
         return
 
     if args.cmd == "hook":

@@ -1,0 +1,130 @@
+# Enterprise policy profile — extends default with provider-specific detectors
+# Usage: cloak pack --policy examples/mcp_policy_enterprise.yaml --dir .
+#
+# Inherits all 10 rules from mcp_policy.yaml, adds ~16 provider-specific rules.
+# Total: ~26 detection rules.
+
+version: 1
+inherits:
+  - mcp_policy.yaml
+
+detection:
+  # ── GitHub ──────────────────────────────────────────────────────
+  - id: github_pat
+    type: regex
+    pattern: '\bghp_[A-Za-z0-9]{36}\b'
+    action: block
+    severity: critical
+
+  - id: github_fine_grained
+    type: regex
+    pattern: '\bgithub_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}\b'
+    action: block
+    severity: critical
+
+  # ── GitLab ──────────────────────────────────────────────────────
+  - id: gitlab_token
+    type: regex
+    pattern: '\bglpat-[A-Za-z0-9\-_]{20,}\b'
+    action: block
+    severity: critical
+
+  # ── Slack ───────────────────────────────────────────────────────
+  - id: slack_bot_token
+    type: regex
+    pattern: '\bxoxb-[A-Za-z0-9\-]+\b'
+    action: block
+    severity: critical
+
+  - id: slack_webhook
+    type: regex
+    pattern: 'https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+'
+    action: block
+    severity: high
+
+  # ── Stripe ──────────────────────────────────────────────────────
+  - id: stripe_secret_key
+    type: regex
+    pattern: '\b[sr]k_live_[A-Za-z0-9]{24,}\b'
+    action: block
+    severity: critical
+
+  - id: stripe_test_key
+    type: regex
+    pattern: '\b[sr]k_test_[A-Za-z0-9]{24,}\b'
+    action: redact
+    severity: medium
+
+  # ── npm ─────────────────────────────────────────────────────────
+  - id: npm_token
+    type: regex
+    pattern: '\bnpm_[A-Za-z0-9]{36}\b'
+    action: block
+    severity: critical
+
+  # ── Heroku (context-gated: requires HEROKU prefix on same line) ─
+  - id: heroku_api_key
+    type: regex
+    pattern: '(?i)HEROKU[_\s]*(?:API)?[_\s]*(?:KEY|TOKEN)\s*[=:]\s*["\x27]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["\x27]?'
+    action: block
+    severity: high
+
+  # ── Twilio ──────────────────────────────────────────────────────
+  - id: twilio_api_key
+    type: regex
+    pattern: '\bSK[0-9a-fA-F]{32}\b'
+    action: block
+    severity: high
+
+  # ── SendGrid ────────────────────────────────────────────────────
+  - id: sendgrid_api_key
+    type: regex
+    pattern: '\bSG\.[A-Za-z0-9\-_]{22,}\.[A-Za-z0-9\-_]{43,}\b'
+    action: block
+    severity: critical
+
+  # ── Generic patterns (config files) ─────────────────────────────
+  - id: generic_password_assign
+    type: regex
+    pattern: '(?i)(?:password|passwd|pwd)\s*[=:]\s*["\x27][^"\x27]{8,}["\x27]'
+    action: redact
+    severity: high
+
+  - id: generic_secret_assign
+    type: regex
+    pattern: '(?i)(?:secret|token|api_key|apikey|api-key)\s*[=:]\s*["\x27][^"\x27]{8,}["\x27]'
+    action: redact
+    severity: high
+
+  # ── PEM keys (PKCS#8) ──────────────────────────────────────────
+  - id: private_key_pkcs8
+    type: regex
+    pattern: '(?s)-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----'
+    action: block
+    severity: critical
+
+  - id: encrypted_private_key
+    type: regex
+    pattern: '(?s)-----BEGIN ENCRYPTED PRIVATE KEY-----.*?-----END ENCRYPTED PRIVATE KEY-----'
+    action: block
+    severity: high
+
+  # ── Azure ───────────────────────────────────────────────────────
+  - id: azure_connection_string
+    type: regex
+    pattern: 'AccountKey=[A-Za-z0-9+/]{86}=='
+    action: block
+    severity: critical
+
+  # ── Entropy override: add allowlist patterns ────────────────────
+  # Overrides the base high_entropy_token rule (same ID) to add
+  # whitelist_patterns. These only apply to entropy detection, not regex rules.
+  - id: high_entropy_token
+    type: entropy
+    min_entropy: 4.5
+    min_length: 20
+    action: redact
+    severity: medium
+    whitelist_patterns:
+      - "^data:image/"
+      - "^data:application/"

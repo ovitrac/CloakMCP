@@ -33,6 +33,7 @@ class Rule:
     min_entropy: Optional[float] = None
     min_length: Optional[int] = None
     severity: Optional[str] = None
+    whitelist_patterns: Optional[List[str]] = None
 
 class Policy:
     def __init__(self, raw: Dict[str, Any]) -> None:
@@ -67,6 +68,7 @@ class Policy:
                     min_entropy=r.get("min_entropy"),
                     min_length=r.get("min_length"),
                     severity=r.get("severity"),
+                    whitelist_patterns=r.get("whitelist_patterns"),
                 )
             )
 
@@ -213,6 +215,7 @@ def _policy_to_dict(policy: Policy) -> Dict[str, Any]:
                 "min_entropy": rule.min_entropy,
                 "min_length": rule.min_length,
                 "severity": rule.severity,
+                "whitelist_patterns": rule.whitelist_patterns,
             }
             for rule in policy.rules
         ],

@@ -62,6 +62,10 @@ def scan(text: str, policy: Policy) -> List[Match]:
                     continue
                 if rule.min_entropy and shannon_entropy(s) < float(rule.min_entropy):
                     continue
+                # Per-rule allowlist (scoped to entropy type only)
+                if rule.whitelist_patterns:
+                    if any(re.search(p, s) for p in rule.whitelist_patterns):
+                        continue
                 matches.append(Match(rule, m.start(), m.end(), s))
     matches.sort(key=lambda x: (x.start, x.end))
     return matches

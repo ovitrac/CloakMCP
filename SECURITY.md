@@ -5,17 +5,33 @@
 ## Reporting a vulnerability
 Open a private issue or email the maintainers (without real secrets). Provide version, OS, Python version, and steps to reproduce.
 
+## Scope of this document
+
+CloakMCP's core CLI (`cloak pack/unpack/scan/sanitize`) is **LLM-agnostic** — it works with any LLM. The security properties of the vault (encryption, HMAC-based tags, local-only storage) apply universally regardless of which LLM you use.
+
+This document additionally describes the security model of the **Claude Code integration**, which uses Claude Code hooks (`SessionStart`, `SessionEnd`, `PreToolUse`, `UserPromptSubmit`) to automate secret protection within Claude Code sessions. The hook-based protections described below (guard-write, safety-guard, prompt-guard, dried-channel architecture) are **specific to the Claude Code integration** and require the hooks to be installed via `scripts/install_claude.sh`.
+
 ## Protection scope
 
-CloakMCP protects files at rest, tool writes, and user prompts.
-- Files are packed (secrets replaced by tags) before the LLM reads them.
-- Write/Edit operations with high-severity secrets (PEM keys, AWS keys) are blocked.
-- User prompts are scanned by the `prompt-guard` hook: critical/high secrets block the prompt; medium/low produce a warning.
+### Core protection (any LLM)
+
+- Files are packed (secrets replaced by tags) before the LLM reads them, via `cloak pack`.
+- Vault encryption (Fernet AES-128) and HMAC-based tags ensure secrets cannot be recovered without the local key.
+- Unpacking (`cloak unpack`) restores secrets locally after LLM work is complete.
+
+### Claude Code hook protection
+
+The following protections require the Claude Code hooks to be installed:
+
+- **Session lifecycle**: `SessionStart` hook packs files automatically; `SessionEnd` hook unpacks.
+- **Write/Edit guard**: `PreToolUse` hook blocks Write/Edit operations containing high-severity secrets (PEM keys, AWS keys).
+- **Safety guard**: `PreToolUse` hook blocks dangerous Bash commands (`rm -rf /`, `git push --force`, etc.).
+- **Prompt guard**: `UserPromptSubmit` hook scans every user prompt — critical/high secrets block the prompt; medium/low produce a warning.
 - Model responses and tool arguments are NOT filtered — do not embed secrets in filenames or tool inputs.
 
-## Dried-channel architecture
+## Dried-channel architecture (Claude Code integration)
 
-The Anthropic API channel is a **dried channel**. Rehydration happens only locally, only on disk, only at session boundaries or on explicit user command.
+Within a Claude Code session protected by CloakMCP hooks, the Anthropic API channel is a **dried channel**. Rehydration happens only locally, only on disk, only at session boundaries or on explicit user command.
 
 ### Why the conversation stays dried
 
@@ -57,9 +73,9 @@ The user sees `TAG-a1b2c3d4e5f6` instead of the actual credential value in Claud
 
 Claude Code compacts long conversations via internal summarization. The compacted summary stays dried. If Claude carries forward "the AWS key is `TAG-a1b2c3d4e5f6`", that is safe — the tag is opaque to anyone reading the transcript or to Anthropic's servers. The secret only materializes on disk, locally, at unpack time.
 
-## Post-session verification
+## Post-session verification (Claude Code hooks)
 
-At `SessionEnd`, CloakMCP performs two automatic checks:
+At `SessionEnd`, the CloakMCP hook performs two automatic checks:
 
 1. **Tag residue scan (R4)**: Rescans all files for remaining `TAG-xxxxxxxxxxxx` patterns. Any tags not found in the vault are reported as *unresolvable* — these may come from another project or a corrupted state. Run `cloak verify --dir .` manually at any time.
 
@@ -70,6 +86,34 @@ At `SessionEnd`, CloakMCP performs two automatic checks:
    - **Unchanged files** for completeness
 
 Both results are written to the session audit log (`.cloak-session-audit.jsonl`). This turns "it should be fine" into provable evidence of what happened during each session.
+
+## Fundamental limitations
+
+These limitations apply universally, regardless of which LLM is used or whether Claude Code hooks are installed.
+
+### Secret inference (non-fixable)
+
+CloakMCP prevents **exfiltration** of secrets from disk to the LLM API channel. It does **not** and **cannot** prevent **inference** — if the LLM can deduce, guess, or regenerate a secret from surrounding context, structure, or naming patterns.
+
+Examples of inference risks:
+- A variable named `DB_PASSWORD` with value `TAG-xxxx` next to `DB_HOST=prod-db.company.com` lets the LLM infer *what kind* of secret it is and where it connects.
+- A `.env.example` with `STRIPE_SECRET_KEY=sk_test_...` reveals the provider and key format.
+- Commit messages or comments describing what a secret does.
+
+**Mitigation (user responsibility):**
+- Avoid descriptive variable names adjacent to secrets when sharing with LLMs.
+- Use `pack --prefix SEC` with generic prefixes.
+- Review packed output before sharing: `cloak pack --dry-run --dir .`
+
+CloakMCP's threat model covers **exfiltration**, not **inference**. The distinction is:
+
+| Threat | CloakMCP coverage | Example |
+|--------|-------------------|---------|
+| Raw secret in source file | **Protected** | AWS key in code → replaced by tag |
+| Secret pasted in prompt | **Mitigated** (Claude Code prompt-guard hook only) | User types API key → prompt blocked |
+| LLM guesses secret from context | **Not covered** | LLM infers "password is company name" |
+| Secret embedded in filenames | **Not covered** | File named `aws_AKIAEXAMPLE.conf` |
+| Secret in tool arguments | **Not covered** | Secret passed as CLI argument |
 
 ## Operating recommendations
 - Keep `keys/` outside version control, strict permissions.

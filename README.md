@@ -7,17 +7,17 @@
 
 ### Your secrets stay home. The AI only sees tags.
 
-**Local-first secret sanitization before LLM exposure — with automatic restoration**
+**Local-first secret sanitization before LLM exposure — works with any LLM, includes first-class Claude Code integration**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.5.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-173%20passing-brightgreen.svg)](./tests)
-[![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#claude-code-integration)
+[![Version](https://img.shields.io/badge/version-0.6.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-214%20passing-brightgreen.svg)](./tests)
+[![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-[See It Work](#see-it-work) • [Features](#features) • [Claude Code Integration](#claude-code-integration) • [Quick Start](#quick-start) • [Demo](#live-demo) • [Security](#security-architecture) • [Documentation](#documentation)
+[See It Work](#see-it-work) • [Features](#features) • [Quick Start](#quick-start) • [Claude Code Integration](#claude-code-integration) • [Demo](#live-demo) • [Security](#security-architecture) • [Documentation](#documentation)
 
 </div>
 
@@ -47,9 +47,9 @@ private static final String AWS_KEY  = "AKIAIOSFODNN7REALKEY1";
 The LLM understands the code perfectly — it just can't see the secrets:
 
 ```
- You → Claude:   "Which variable stores the database password?"
+ You → LLM:      "Which variable stores the database password?"
 
- Claude:         "DB_PASS on line 27 stores the credential TAG-a6c0cd73627c.
+ LLM:            "DB_PASS on line 27 stores the credential TAG-a6c0cd73627c.
                   It's used in the JDBC connection to the PostgreSQL instance."
 
  You → CloakMCP: cloak unpack
@@ -57,15 +57,15 @@ The LLM understands the code perfectly — it just can't see the secrets:
  Result:          TAG-a6c0cd73627c → P@ssw0rd-Pr0duction!   ← restored locally
 ```
 
-**Claude identified the right variable, understood the architecture, explained the data flow — but the actual password never left your machine.** One command brings it back.
+**The LLM identified the right variable, understood the architecture, explained the data flow — but the actual password never left your machine.** One command brings it back. This works with Claude, Copilot, Codex, Gemini, local Ollama models — any LLM that reads your code.
 
-With Claude Code hooks, the entire cycle is **automatic**: secrets vanish at session start, reappear at session end. Zero human intervention.
+With **Claude Code**, the entire cycle is **automatic** via hooks: secrets vanish at session start, reappear at session end. Zero human intervention.
 
 ---
 
 ## Overview
 
-**CloakMCP** is a **local-first, deterministic sanitizer** that removes or neutralizes secrets (emails, IPs, URLs, tokens, API keys, SSH keys, JWTs) **before** your text/code reaches LLMs like Claude, GitHub Copilot, or OpenAI Codex.
+**CloakMCP** is a **local-first, deterministic sanitizer** that removes or neutralizes secrets (emails, IPs, URLs, tokens, API keys, SSH keys, JWTs) **before** your text/code reaches any LLM — Claude, GitHub Copilot, OpenAI Codex, Gemini, or local models via Ollama. The core CLI (`cloak pack/unpack/scan/sanitize`) is **LLM-agnostic**; a dedicated **Claude Code integration** provides automatic session-level protection via hooks and an MCP tool server.
 
 ### What makes CloakMCP different
 
@@ -75,7 +75,7 @@ With Claude Code hooks, the entire cycle is **automatic**: secrets vanish at ses
 | **Reversible redaction** | Yes | No | No | No |
 | **LLM-optimized workflow** | Yes | No | No | No |
 | **MCP tool server** | Yes (6 tools) | No | No | No |
-| **Claude Code hooks** | Yes (auto pack/unpack) | No | No | No |
+| **IDE hook integration** | Yes (Claude Code auto pack/unpack) | No | No | No |
 | **Deterministic tags** | Yes (HMAC-based) | No | No | Varies |
 | **Local-only vault** | Yes | No | No (cloud KMS) | Varies |
 | **Directory pack/unpack** | Yes | No | No | No |
@@ -84,20 +84,22 @@ With Claude Code hooks, the entire cycle is **automatic**: secrets vanish at ses
 
 ### Key Capabilities
 
+- **LLM-agnostic**: Core CLI works with any LLM workflow — no vendor lock-in
 - **Local-first**: All operations run on your machine — no cloud dependencies
 - **Reversible**: Deterministic tagging allows safe restoration via encrypted vaults
-- **Transparent**: Claude Code hooks pack/unpack automatically at session start/end
-- **MCP-native**: 6 tools exposed via Model Context Protocol for Claude Code
 - **Batch processing**: Pack/unpack entire codebases with one command
 - **Policy-driven**: Configure detection rules via YAML (regex, entropy, IPs, URLs)
 - **Group policies**: Hierarchical policy inheritance (company → team → project)
 - **Auditable**: Every operation logged to `audit/audit.jsonl`
+- **Claude Code integration**: Hooks automate pack/unpack at session boundaries; 6 MCP tools for in-session use
 
 ---
 
 ## Claude Code Integration
 
-CloakMCP integrates natively with Claude Code through **two complementary mechanisms**:
+> CloakMCP's core CLI is LLM-agnostic. This section describes the **first-class integration with Claude Code**, which automates the pack/unpack lifecycle through hooks and exposes tools via the Model Context Protocol (MCP). For other LLMs, use `cloak pack` / `cloak unpack` manually or in your own scripts.
+
+CloakMCP integrates with Claude Code through **two complementary mechanisms**:
 
 ### 1. Hooks — Automatic Session Protection
 
@@ -134,9 +136,9 @@ When Claude Code starts a session, CloakMCP **automatically packs** all files. W
 
 The **UserPromptSubmit guard** scans every user message for secrets — blocking critical/high and warning on medium/low. The **PreToolUse guard** scans content Claude tries to write — and denies if raw secrets appear in generated code.
 
-### 2. MCP Tool Server — 6 Tools for Claude
+### 2. MCP Tool Server — 6 Tools
 
-CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over stdio). Claude Code discovers them automatically:
+CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over stdio). Any MCP-compatible client (Claude Code, Claude Desktop, or custom agents) discovers them automatically:
 
 | Tool | Description |
 |------|-------------|
@@ -201,9 +203,10 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
 | `cloak policy validate --policy POL` | Validate policy file (including inheritance chain) |
 | `cloak policy show --policy POL` | Show merged policy after inheritance resolution |
 | `cloak sanitize-stdin --policy POL` | Sanitize text from stdin to stdout (pipe helper) |
+| `cloak repack --dir DIR --policy POL` | Incremental re-pack: scan new/changed files only |
 | `cloak verify --dir DIR` | Post-unpack verification: scan for residual tags |
-| `cloak hook <event>` | Handle Claude Code hooks (session-start, session-end, guard-write, prompt-guard) |
-| `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio) |
+| `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, prompt-guard) |
+| `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio, any MCP client) |
 
 ---
 
@@ -282,20 +285,22 @@ openssl rand -hex 32 > keys/mcp_hmac_key
 chmod 600 keys/*
 ```
 
-### 3. Pack / Unpack (Recommended Workflow)
+### 3. Pack / Unpack (Works with Any LLM)
 
 ```bash
 # Pack: replace secrets with tags (vaulted, reversible)
 cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 
-# Now safe to share with LLMs — secrets replaced with TAG-xxxxxxxxxxxx
+# Now safe to share with any LLM — secrets replaced with TAG-xxxxxxxxxxxx
 # Vault stored in ~/.cloakmcp/vaults/
 
 # Unpack: restore original secrets
 cloak unpack --dir .
 ```
 
-### 4. Claude Code Setup
+### 4. Claude Code Setup (Optional)
+
+If you use Claude Code, the pack/unpack cycle is fully automated via hooks:
 
 ```bash
 # The repo already includes .mcp.json and .claude/hooks/
@@ -340,29 +345,30 @@ graph TB
 
 ### Why LLMs Cannot Access Secrets
 
+The sequence below shows the automated Claude Code hook flow. For other LLMs, the developer runs `cloak pack` / `cloak unpack` manually — the security properties are identical.
+
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant Hook as Claude Code Hook
-    participant MCP as CloakMCP
+    participant Cloak as CloakMCP
     participant Vault as Encrypted Vault<br/>(~/.cloakmcp/)
-    participant LLM as Claude Code
+    participant LLM as LLM (any)
 
-    Note over Hook: SessionStart fires
-    Hook->>MCP: cloak pack --dir .
-    MCP->>MCP: Scan for secrets
-    MCP->>Vault: Store secret → TAG mapping (encrypted)
-    MCP->>Dev: Files now contain tags (TAG-xxxx)
+    Note over Dev,Cloak: cloak pack (or SessionStart hook)
+    Dev->>Cloak: cloak pack --dir .
+    Cloak->>Cloak: Scan for secrets
+    Cloak->>Vault: Store secret → TAG mapping (encrypted)
+    Cloak->>Dev: Files now contain tags (TAG-xxxx)
 
     Dev->>LLM: Work on tagged code
     Note over LLM: LLM sees: TAG-a6c0cd73627c<br/>NOT: P@ssw0rd-Pr0duction!
 
     LLM->>Dev: Modified code (tags preserved)
-    Note over Hook: SessionEnd fires
-    Hook->>MCP: cloak unpack --dir .
-    MCP->>Vault: Retrieve secret for each TAG
-    Vault->>MCP: Decrypted secrets
-    MCP->>Dev: Files restored with original secrets
+    Note over Dev,Cloak: cloak unpack (or SessionEnd hook)
+    Dev->>Cloak: cloak unpack --dir .
+    Cloak->>Vault: Retrieve secret for each TAG
+    Vault->>Cloak: Decrypted secrets
+    Cloak->>Dev: Files restored with original secrets
 ```
 
 ### Vault Architecture
@@ -390,21 +396,28 @@ sequenceDiagram
 
 ### Protection Boundaries
 
-CloakMCP protects **files at rest**, **tool writes**, and **user prompts**.
+**Core protection** (any LLM workflow):
 
 | Boundary | Protected? | Mechanism |
 |----------|-----------|-----------|
-| Files on disk | Yes | `pack` at session start, `unpack` at session end |
+| Files on disk | Yes | `cloak pack` / `cloak unpack` (manual or scripted) |
+| Clipboard / copy-paste | No | Use `cloak sanitize-stdin` before pasting sensitive content |
+| Secret inference by LLM | No | Fundamental: no local filter can prevent model reasoning |
+
+**Claude Code hooks** (when installed — see [`SECURITY.md`](SECURITY.md) for details):
+
+| Boundary | Protected? | Mechanism |
+|----------|-----------|-----------|
+| Session lifecycle | Yes | `SessionStart` / `SessionEnd` hooks automate pack/unpack |
 | Write/Edit tool calls | Yes | `guard-write` hook denies high-severity secrets |
 | Bash commands | Yes | `safety-guard` hook blocks dangerous commands |
-| User prompts | Yes | `prompt-guard` hook blocks/warns on secrets in prompts |
+| User prompts | Mitigated | `prompt-guard` hook blocks/warns (if installed) |
 | Chat after prompt | No | Prompt guard scans user input, not model responses |
-| Clipboard / copy-paste | No | Use `cloak sanitize-stdin` before pasting sensitive content |
 
 > **Tip:** Pipe text through `cloak sanitize-stdin --policy examples/mcp_policy.yaml` before pasting.
 > Use vault tags (`TAG-xxxxxxxxxxxx`) when referring to credentials.
 >
-> **Why no output filtering?** The conversation operates entirely in tag-space by design. Rehydrating Claude's responses would create a cleartext/tag split that breaks on the next turn. See [`SECURITY.md`](SECURITY.md#dried-channel-architecture) for the full rationale.
+> **Why no output filtering?** In the Claude Code integration, the conversation operates entirely in tag-space by design. See [`SECURITY.md`](SECURITY.md#dried-channel-architecture) for the full rationale.
 
 ### Data Flow Comparison
 
@@ -440,8 +453,8 @@ graph LR
 **Q: Can LLMs guess secrets from tags?**
 **A**: No. Tags are HMAC-SHA256 signatures (keyed with your vault key) truncated to 12 hex chars. Without your `~/.cloakmcp/keys/`, reversing tags is cryptographically infeasible.
 
-**Q: Does this work with any LLM / protocol?**
-**A**: Yes. CloakMCP operates at the file level (pack/unpack) and at the text level (MCP tools). It works with Claude Code (native hooks + MCP), Copilot, Codex, Gemini, local Ollama models — any LLM that reads your code.
+**Q: Does this work with any LLM?**
+**A**: Yes. CloakMCP's core CLI (`cloak pack/unpack/scan/sanitize`) is LLM-agnostic — it works with Claude, Copilot, Codex, Gemini, local Ollama models, or any LLM that reads your code. The Claude Code integration (hooks + MCP) adds automatic session-level protection but is not required.
 
 ---
 
@@ -487,6 +500,21 @@ detection:
     action: redact
 ```
 
+### Enterprise Policy Profile
+
+For production environments with additional provider coverage:
+
+```bash
+cloak pack --policy examples/mcp_policy_enterprise.yaml --dir .
+```
+
+| Profile | File | Rules | Coverage |
+|---------|------|-------|----------|
+| **Default** | `mcp_policy.yaml` | 10 | AWS, GCP, SSH, PEM, JWT, email, IP, URL, entropy |
+| **Enterprise** | `mcp_policy_enterprise.yaml` | 26 | Default + GitHub, GitLab, Slack, Stripe, npm, Heroku, Twilio, SendGrid, Azure, PKCS#8, generic password/secret patterns |
+
+The enterprise profile inherits from the default via `inherits: [mcp_policy.yaml]`. Provider-specific rules use context-gated detection where needed (e.g., Heroku UUID requires `HEROKU` prefix to avoid false positives).
+
 ### `.mcpignore` File
 
 Controls which files are skipped during `pack`/`unpack` (similar to `.gitignore`):
@@ -523,6 +551,7 @@ keys/
 | `CLOAK_STRICT` | *(unset)* | Set to `1` to treat medium-severity matches as blocking (hooks escalate warn → deny/block) |
 | `CLOAK_PROMPT_GUARD` | *(enabled)* | Set to `off` to disable the UserPromptSubmit hook entirely |
 | `CLOAK_AUDIT_TOOLS` | *(unset)* | Set to `1` to enable Tier 2 tool metadata logging (hashed file paths) |
+| `CLOAK_REPACK_ON_WRITE` | *(unset)* | Set to `1` to auto-repack files after Write/Edit tool calls. Adds latency per write. |
 
 ---
 
@@ -593,14 +622,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (173 passing)
+# Run all tests (214 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 173+ tests across 6 test files covering unit tests, integration tests, API tests, hook tests, and MCP server tests.
+**Test suite**: 214+ tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
 
 ---
 
@@ -608,7 +637,7 @@ pytest --cov=cloakmcp --cov-report=term
 
 ```
 CloakMCP/
-├── cloakmcp/                      # Main package (14 modules, ~2,150 LOC)
+├── cloakmcp/                      # Main package (14 modules, ~2,500 LOC)
 │   ├── __init__.py
 │   ├── actions.py                 # Action engine (redact, pseudonymize, etc.)
 │   ├── audit.py                   # Audit logging
@@ -623,12 +652,13 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (173+ tests, 6 files)
+├── tests/                         # Test suite (214+ tests, 7 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
-│   ├── test_hooks.py              # Claude Code hook tests
+│   ├── test_hooks.py              # Claude Code hook tests (session, guard, repack)
 │   ├── test_mcp_server.py         # MCP server protocol tests
+│   ├── test_policy_enterprise.py  # Enterprise policy profile tests
 │   └── test_smoke.py              # Basic smoke test
 ├── demo/                          # Live demo (Spring Boot banking service)
 │   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
@@ -637,14 +667,15 @@ CloakMCP/
 │   ├── run_demo.sh                # Interactive 5-act presentation
 │   └── src/                       # Fake banking microservice (3 config files)
 ├── examples/                      # Example policies
-│   ├── mcp_policy.yaml            # Default policy
+│   ├── mcp_policy.yaml            # Default policy (10 rules)
+│   ├── mcp_policy_enterprise.yaml # Enterprise policy (26 rules, inherits default)
 │   └── policies/                  # Group policy examples (inheritance)
 ├── .claude/                       # Claude Code integration
 │   ├── hooks/                     # Hook scripts (session-start/end, guard-write)
 │   └── settings.local.json        # Hook + permission configuration
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration
-├── pyproject.toml                 # Package metadata (v0.5.0)
+├── pyproject.toml                 # Package metadata (v0.6.0)
 ├── LICENSE                        # MIT License
 └── README.md                      # This file
 ```
@@ -656,13 +687,14 @@ CloakMCP/
 | Document | Description |
 |----------|-------------|
 | **[`README.md`](README.md)** | This file (overview and quick start) |
+| **[`CHANGELOG.md`](CHANGELOG.md)** | Full release history (Keep a Changelog format) |
 | **[`demo/README.md`](demo/README.md)** | Live demo guide (4 scripts, LLM + MCP) |
 | **[`QUICKREF.md`](QUICKREF.md)** | One-page cheat sheet for daily use |
 | **[`SERVER.md`](SERVER.md)** | Server configuration and security model |
 | **[`VSCODE_MANUAL.md`](VSCODE_MANUAL.md)** | Complete VS Code integration guide |
 | **[`GROUP_POLICY_IMPLEMENTATION.md`](GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
 | **[`CLAUDE.md`](CLAUDE.md)** | Project specifications (for LLMs) |
-| **[`SECURITY.md`](SECURITY.md)** | Security policy and disclosure |
+| **[`SECURITY.md`](SECURITY.md)** | Security policy, Claude Code hook security model, disclosure |
 | **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Contribution guidelines |
 | **[`tests/README.md`](tests/README.md)** | Test suite documentation |
 
@@ -692,58 +724,9 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 ## Changelog
 
-### v0.5.0 — MCP Server + Claude Code Hooks
+See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Added**:
-- **MCP tool server** (`cloak-mcp-server`): 6 tools via JSON-RPC 2.0 over stdio for Claude Code
-- **Claude Code hooks**: SessionStart (auto-pack), SessionEnd (auto-unpack), PreToolUse (guard-write)
-- **Hook handler module** (`cloakmcp/hooks.py`): session state management, stale state recovery
-- **File-level pack/unpack** (`cloakmcp/filepack.py`): text-level operations with overlapping match deduplication
-- **Live demo suite** (`demo/`): 4 scripts — LLM demo (Ollama/Claude), MCP protocol demo, transcript, interactive
-- **Demo banking service**: Spring Boot `BankTransferService.java` with 10+ fake secrets across 3 config files
-- **MCP server tests** (`tests/test_mcp_server.py`): protocol compliance tests
-- **Hook tests** (`tests/test_hooks.py`): session lifecycle and guard tests
-
-**Changed**:
-- **Package renamed**: `mcp/` → `cloakmcp/` (avoids conflict with Anthropic's `mcp` package)
-- **Entry points**: `cloak = cloakmcp.cli:main`, `cloak-mcp-server = cloakmcp.mcp_server:main`
-- **Test suite expanded**: 90+ → 173+ tests across 6 test files
-
-**Fixed**:
-- **Overlapping match deduplication**: Prevents round-trip corruption when multiple scanner rules match overlapping text spans
-- **URL regex backtracking**: Negative lookbehind prevents trailing punctuation consumption
-- **Email regex catastrophic backtracking**: Bounded quantifiers replace unbounded `+`
-
-### v0.3.3 — Performance & Test Reliability
-
-- Fixed email regex catastrophic backtracking (10 MB: ~38s → <0.1s)
-- API endpoints return proper HTTP 500 JSON responses
-- Fixed test reliability issues (HMAC key path, lazy vault creation)
-
-### v0.3.2 — Group Policy Inheritance
-
-- Hierarchical policy loading (company → team → project)
-- `cloak policy validate` and `cloak policy show` commands
-- Cycle detection, deep merging, tilde expansion
-
-### v0.3.1 — Security Hardening
-
-- HMAC-based tags (keyed with vault key) replace plain SHA-256
-- SERVER.md with threat model and security architecture
-
-### v0.2.5 — Performance & Features
-
-- HMAC key caching (100-1000x improvement)
-- API rate limiting, vault export/import, CLI validation
-
-### v0.2.0 — Beta Release
-
-- Pack/unpack commands, encrypted vaults, deterministic tagging
-- VS Code integration, API server, comprehensive test suite
-
-### v0.1.0 — Alpha Release
-
-- Initial release: scan, sanitize, policy engine, audit logging
+**Latest**: v0.6.0 — Enterprise policy (16 provider rules), incremental repack, tag idempotency, security hardening
 
 ---
 
@@ -772,8 +755,8 @@ See [`AUTHORS.md`](AUTHORS.md) for the full list of contributors.
 
 <div align="center">
 
-*"Claude may read, refactor, or reason on tagged data —
-but never unmask what the vault keeps safe."*
+*"Any LLM may read, refactor, or reason on tagged data —
+but none can unmask what the vault keeps safe."*
 
 **[Back to Top](#cloakmcp)**
 

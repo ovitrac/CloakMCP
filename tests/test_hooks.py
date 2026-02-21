@@ -23,7 +23,9 @@ from cloakmcp.hooks import (
     _remove_manifest,
     _append_audit,
 )
-from cloakmcp.dirpack import verify_unpack, build_manifest, compute_delta, load_ignores
+from cloakmcp.dirpack import verify_unpack, build_manifest, compute_delta, load_ignores, repack_dir, repack_file
+from cloakmcp.filepack import pack_text, TAG_RE
+from cloakmcp.policy import Policy
 from cloakmcp.storage import Vault
 
 
@@ -1081,3 +1083,284 @@ class TestAuditLog:
             parsed = json.loads(line)
             assert "event" in parsed
             assert "ts" in parsed
+
+
+# ── R6: Tag idempotency + Incremental repack ─────────────────────
+
+
+class TestTagIdempotency:
+    """pack_text() must be idempotent: calling it on already-packed text is a no-op."""
+
+    def test_pack_text_idempotent(self, tmp_path):
+        """Packing already-packed text produces no changes."""
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(str(tmp_path))
+        text = "my AWS key is AKIAABCDEFGHIJKLMNOP"
+        packed, count1 = pack_text(text, policy, vault, prefix="TAG")
+        assert count1 > 0
+        # Pack again — should be a no-op
+        repacked, count2 = pack_text(packed, policy, vault, prefix="TAG")
+        assert count2 == 0
+        assert repacked == packed
+
+    def test_pack_text_skips_existing_tags(self, tmp_path):
+        """Existing TAG-xxxx tokens are not re-detected as secrets."""
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(str(tmp_path))
+        # Text that already contains a tag
+        text = "config = TAG-a1b2c3d4e5f6 and more text"
+        packed, count = pack_text(text, policy, vault, prefix="TAG")
+        assert count == 0
+        assert packed == text
+
+    def test_pack_mixed_tags_and_secrets(self, tmp_path):
+        """Text with both tags and new secrets: only new secrets get packed."""
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(str(tmp_path))
+        text = "old = TAG-a1b2c3d4e5f6 and new = AKIAABCDEFGHIJKLMNOP"
+        packed, count = pack_text(text, policy, vault, prefix="TAG")
+        assert count > 0
+        # The existing tag should be preserved
+        assert "TAG-a1b2c3d4e5f6" in packed
+        # The new secret should be replaced
+        assert "AKIAABCDEFGHIJKLMNOP" not in packed
+
+
+class TestRepackDir:
+    """Tests for repack_dir() — incremental re-pack."""
+
+    def _setup_project(self, tmp_path):
+        """Create a minimal project structure with policy + secrets."""
+        # Write policy reference
+        (tmp_path / ".mcpignore").write_text("__pycache__/\n")
+        return str(tmp_path)
+
+    def test_repack_skips_unchanged_files(self, tmp_path):
+        """Files matching manifest hash are not reprocessed."""
+        root = self._setup_project(tmp_path)
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        # Create a file, pack it
+        f = tmp_path / "test.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+        from cloakmcp.dirpack import pack_dir
+        pack_dir(root, policy, prefix="TAG", backup=False)
+
+        # Build manifest (of packed state)
+        ignores = load_ignores(root)
+        manifest = build_manifest(root, ignores)
+
+        # Repack — should skip the already-packed file
+        result = repack_dir(root, policy, prefix="TAG", manifest=manifest)
+        assert result["repacked_files"] == 0
+        assert result["skipped_files"] >= 1
+
+    def test_repack_packs_new_file(self, tmp_path):
+        """New file with secrets is packed during repack."""
+        root = self._setup_project(tmp_path)
+        policy = Policy.load(POLICY_PATH)
+
+        # Initial pack (empty project)
+        from cloakmcp.dirpack import pack_dir
+        ignores = load_ignores(root)
+        manifest = build_manifest(root, ignores)
+
+        # Add a new file after pack
+        (tmp_path / "new_secret.txt").write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        result = repack_dir(root, policy, prefix="TAG", manifest=manifest)
+        assert result["repacked_files"] >= 1
+        assert result["new_secrets"] >= 1
+
+        # Verify the secret is now replaced
+        content = (tmp_path / "new_secret.txt").read_text()
+        assert "AKIAABCDEFGHIJKLMNOP" not in content
+        assert "TAG-" in content
+
+    def test_repack_packs_modified_file(self, tmp_path):
+        """Changed file with new secrets is packed during repack."""
+        root = self._setup_project(tmp_path)
+        policy = Policy.load(POLICY_PATH)
+
+        # Create and pack a file
+        f = tmp_path / "config.txt"
+        f.write_text("clean content")
+        from cloakmcp.dirpack import pack_dir
+        pack_dir(root, policy, prefix="TAG", backup=False)
+
+        ignores = load_ignores(root)
+        manifest = build_manifest(root, ignores)
+
+        # Modify the file — add a secret
+        f.write_text("clean content\nkey = AKIAABCDEFGHIJKLMNOP")
+
+        result = repack_dir(root, policy, prefix="TAG", manifest=manifest)
+        assert result["repacked_files"] >= 1
+
+        content = f.read_text()
+        assert "AKIAABCDEFGHIJKLMNOP" not in content
+
+    def test_repack_no_manifest_full_scan(self, tmp_path):
+        """Without manifest, repacks all files with secrets."""
+        root = self._setup_project(tmp_path)
+        policy = Policy.load(POLICY_PATH)
+
+        (tmp_path / "a.txt").write_text("key = AKIAABCDEFGHIJKLMNOP")
+        (tmp_path / "b.txt").write_text("clean content")
+
+        result = repack_dir(root, policy, prefix="TAG", manifest=None)
+        assert result["repacked_files"] >= 1
+
+    def test_repack_dry_run(self, tmp_path):
+        """Dry-run mode does not modify files."""
+        root = self._setup_project(tmp_path)
+        policy = Policy.load(POLICY_PATH)
+
+        f = tmp_path / "secret.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+        original_content = f.read_text()
+
+        result = repack_dir(root, policy, prefix="TAG", manifest=None, dry_run=True)
+        assert result["repacked_files"] >= 1
+        assert f.read_text() == original_content  # No modification
+
+
+class TestRepackFile:
+    """Tests for repack_file() — standalone single-file re-pack."""
+
+    def test_repack_file_standalone(self, tmp_path):
+        """Single-file re-pack works without manifest."""
+        root = str(tmp_path)
+        (tmp_path / ".mcpignore").write_text("")
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        f = tmp_path / "secret.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        count = repack_file(str(f), root, policy, vault, prefix="TAG")
+        assert count >= 1
+        assert "AKIAABCDEFGHIJKLMNOP" not in f.read_text()
+        assert "TAG-" in f.read_text()
+
+    def test_repack_file_no_secrets(self, tmp_path):
+        """File without secrets → no change, count 0."""
+        root = str(tmp_path)
+        (tmp_path / ".mcpignore").write_text("")
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        f = tmp_path / "clean.txt"
+        f.write_text("nothing secret here")
+
+        count = repack_file(str(f), root, policy, vault, prefix="TAG")
+        assert count == 0
+        assert f.read_text() == "nothing secret here"
+
+    def test_repack_file_validates_path(self, tmp_path):
+        """Path outside root → no-op, returns 0."""
+        root = str(tmp_path / "project")
+        (tmp_path / "project").mkdir()
+        (tmp_path / "project" / ".mcpignore").write_text("")
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        # File outside project root
+        outside = tmp_path / "outside.txt"
+        outside.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        count = repack_file(str(outside), root, policy, vault, prefix="TAG")
+        assert count == 0
+        # File should be unchanged
+        assert "AKIAABCDEFGHIJKLMNOP" in outside.read_text()
+
+    def test_repack_file_respects_ignores(self, tmp_path):
+        """Ignored file → no-op, returns 0."""
+        root = str(tmp_path)
+        (tmp_path / ".mcpignore").write_text("*.log\n")
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        f = tmp_path / "debug.log"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        count = repack_file(str(f), root, policy, vault, prefix="TAG")
+        assert count == 0
+
+    def test_repack_file_idempotent(self, tmp_path):
+        """Repack same file twice → second call is no-op."""
+        root = str(tmp_path)
+        (tmp_path / ".mcpignore").write_text("")
+        policy = Policy.load(POLICY_PATH)
+        vault = Vault(root)
+
+        f = tmp_path / "secret.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        count1 = repack_file(str(f), root, policy, vault, prefix="TAG")
+        assert count1 >= 1
+        content_after_first = f.read_text()
+
+        count2 = repack_file(str(f), root, policy, vault, prefix="TAG")
+        assert count2 == 0
+        assert f.read_text() == content_after_first
+
+
+class TestRepackHookIntegration:
+    """Tests for repack-on-write via handle_audit_log()."""
+
+    def test_repack_hook_disabled_by_default(self, tmp_path, monkeypatch):
+        """Without CLOAK_REPACK_ON_WRITE, no repack happens."""
+        monkeypatch.delenv("CLOAK_REPACK_ON_WRITE", raising=False)
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        root = str(tmp_path)
+
+        f = tmp_path / "secret.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        hook_input = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(f)},
+        })
+        monkeypatch.setattr("sys.stdin", __import__("io").StringIO(hook_input))
+        monkeypatch.chdir(root)
+
+        handle_audit_log(root)
+
+        # File should be unchanged — no repack
+        assert "AKIAABCDEFGHIJKLMNOP" in f.read_text()
+
+    def test_repack_hook_integration(self, tmp_path, monkeypatch):
+        """With CLOAK_REPACK_ON_WRITE=1, file is repacked after Write."""
+        monkeypatch.setenv("CLOAK_REPACK_ON_WRITE", "1")
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        root = str(tmp_path)
+
+        # Write session state (required for repack hook to activate)
+        _write_state(root, POLICY_PATH, "TAG")
+
+        f = tmp_path / "secret.txt"
+        f.write_text("key = AKIAABCDEFGHIJKLMNOP")
+
+        hook_input = json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(f)},
+        })
+        monkeypatch.setattr("sys.stdin", __import__("io").StringIO(hook_input))
+        monkeypatch.chdir(root)
+
+        handle_audit_log(root)
+
+        # File should be repacked — secret replaced
+        content = f.read_text()
+        assert "AKIAABCDEFGHIJKLMNOP" not in content
+        assert "TAG-" in content
+
+        # Audit should record the repack
+        audit_path = tmp_path / AUDIT_FILE
+        if audit_path.exists():
+            events = [json.loads(ln) for ln in audit_path.read_text().strip().splitlines()]
+            repack_events = [e for e in events if e.get("event") == "repack_file"]
+            assert len(repack_events) >= 1
+            assert repack_events[0]["secrets_packed"] >= 1

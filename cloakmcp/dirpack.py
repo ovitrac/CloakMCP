@@ -4,7 +4,7 @@ import hashlib
 import os
 import shutil
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .policy import Policy
 from .storage import Vault
@@ -397,3 +397,158 @@ def compute_delta(
         "changed_files": changed_files,
         "unchanged_count": unchanged_count,
     }
+
+
+# ── R6: Incremental re-pack ─────────────────────────────────────
+
+
+def repack_dir(
+    root: str,
+    policy: Policy,
+    prefix: str = "TAG",
+    manifest: Optional[Dict[str, Any]] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Incremental re-pack: only process new or changed files.
+
+    Compares current file SHA-256 against packed-content hashes in the
+    session manifest. Files matching the manifest are skipped (already
+    packed, no changes since last pack).
+
+    Args:
+        root: Project root directory
+        policy: Detection policy
+        prefix: Tag prefix (e.g., TAG, SEC, KEY)
+        manifest: Session manifest from build_manifest(). If None, repacks all.
+        dry_run: Preview only (no file modifications)
+
+    Returns:
+        {"repacked_files": int, "skipped_files": int, "new_secrets": int}
+    """
+    import sys
+    vault = Vault(root)
+    ignores = load_ignores(root)
+    manifest_files = manifest.get("files", {}) if manifest else {}
+
+    repacked = 0
+    skipped = 0
+    new_secrets = 0
+
+    for path in iter_files(root, ignores):
+        rel = os.path.relpath(path, root)
+
+        # Check manifest: skip if file hash matches (already packed, unchanged)
+        if manifest_files:
+            try:
+                current_hash = _file_sha256(path)
+                entry = manifest_files.get(rel)
+                if entry and entry.get("sha256") == current_hash:
+                    skipped += 1
+                    continue
+            except (OSError, IOError, PermissionError):
+                pass
+
+        # File is new or changed — re-pack
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except (OSError, IOError, PermissionError) as e:
+            print(f"Warning: Skipping file (read error): {path} - {e}", file=sys.stderr)
+            continue
+
+        packed, count = pack_text(text, policy, vault, prefix=prefix)
+        if count > 0 and packed != text:
+            if not dry_run:
+                tmp = path + ".cloak.tmp"
+                try:
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        f.write(packed)
+                    os.replace(tmp, path)
+                    repacked += 1
+                    new_secrets += count
+                except (OSError, IOError, PermissionError) as e:
+                    print(f"Warning: Failed to write: {path} - {e}", file=sys.stderr)
+                    if os.path.exists(tmp):
+                        try:
+                            os.remove(tmp)
+                        except OSError:
+                            pass
+            else:
+                repacked += 1
+                new_secrets += count
+        else:
+            skipped += 1
+
+    if not dry_run and repacked > 0:
+        print(f"Repack: {repacked} files repacked, {new_secrets} new secrets", file=sys.stderr)
+    elif dry_run and repacked > 0:
+        print(f"[DRY RUN] Would repack {repacked} files ({new_secrets} secrets)", file=sys.stderr)
+
+    return {"repacked_files": repacked, "skipped_files": skipped, "new_secrets": new_secrets}
+
+
+def repack_file(
+    path: str,
+    root: str,
+    policy: Policy,
+    vault: Vault,
+    prefix: str = "TAG",
+) -> int:
+    """Re-pack a single file in-place (standalone, no manifest dependency).
+
+    Validates that the path is inside the project root and not ignored.
+    Uses the idempotency guard in pack_text() to avoid double-tagging.
+
+    Args:
+        path: Absolute path to the file
+        root: Project root directory
+        policy: Detection policy
+        vault: Vault for tag storage
+        prefix: Tag prefix
+
+    Returns:
+        Count of new secrets packed (0 if file unchanged or skipped)
+    """
+    # Validate path is inside project root
+    abs_path = os.path.abspath(path)
+    abs_root = os.path.abspath(root)
+    if not abs_path.startswith(abs_root + os.sep) and abs_path != abs_root:
+        return 0
+
+    # Check if file is ignored
+    rel = os.path.relpath(abs_path, abs_root)
+    ignores = load_ignores(abs_root)
+    for g in ignores:
+        if g.endswith("/"):
+            # Directory pattern — check if rel path starts with it
+            dir_part = os.path.dirname(rel) + "/"
+            if fnmatch.fnmatch(dir_part, g):
+                return 0
+        elif fnmatch.fnmatch(rel, g):
+            return 0
+
+    if not os.path.isfile(abs_path):
+        return 0
+
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except (OSError, IOError, PermissionError):
+        return 0
+
+    packed, count = pack_text(text, policy, vault, prefix=prefix)
+    if count > 0 and packed != text:
+        tmp = abs_path + ".cloak.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(packed)
+            os.replace(tmp, abs_path)
+        except (OSError, IOError, PermissionError):
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            return 0
+
+    return count

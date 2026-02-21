@@ -225,7 +225,8 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
             "Do NOT manually alter tag syntax. "
             "Secrets will be restored automatically when the session ends. "
             "IMPORTANT: Hooks protect files on disk and user prompts. "
-            "Do not embed secrets in tool arguments or filenames."
+            "Do not embed secrets in tool arguments or filenames. "
+            "CloakMCP prevents exfiltration, not inference from context."
         )
     }
 
@@ -579,7 +580,44 @@ def handle_audit_log(project_dir: str = ".") -> Dict[str, Any]:
             "file_hash": hashed_path,
         })
 
+    # Opt-in repack-on-write: re-pack the written file after Write/Edit
+    if os.environ.get("CLOAK_REPACK_ON_WRITE") == "1" and tool_name in ("Write", "Edit"):
+        file_path = tool_input.get("file_path", "")
+        if file_path and os.path.isfile(file_path):
+            _repack_single_file(project_dir, file_path)
+
     return {}
+
+
+def _repack_single_file(project_dir: str, file_path: str) -> None:
+    """Re-pack a single file after a Write/Edit tool call (hook-driven).
+
+    Standalone: does not depend on session manifest. Validates path is inside
+    project, loads policy, packs in-place, appends audit event.
+    """
+    from .dirpack import repack_file
+
+    policy_path = _find_policy()
+    if not policy_path:
+        return
+
+    state = _read_state(project_dir)
+    if state is None:
+        return  # No active session — skip repack
+
+    prefix = state.get("prefix", DEFAULT_PREFIX)
+
+    try:
+        policy = Policy.load(policy_path)
+        vault = Vault(project_dir)
+        count = repack_file(file_path, project_dir, policy, vault, prefix=prefix)
+        if count > 0:
+            _append_audit(project_dir, {
+                "event": "repack_file",
+                "secrets_packed": count,
+            })
+    except Exception:
+        pass  # Best-effort: never fail on repack
 
 
 def _classify_secret_event(tool_name: str, tool_input: Dict[str, Any]) -> str:
