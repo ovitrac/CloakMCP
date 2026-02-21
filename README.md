@@ -716,7 +716,6 @@ CloakMCP/
 | **[`docs/VSCODE_MANUAL.md`](docs/VSCODE_MANUAL.md)** | Complete VS Code integration guide |
 | **[`docs/GROUP_POLICY_IMPLEMENTATION.md`](docs/GROUP_POLICY_IMPLEMENTATION.md)** | Group policy inheritance details |
 | **[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)** | Threat model and security analysis |
-| **[`CLAUDE.md`](CLAUDE.md)** | Project specifications (for LLMs) |
 | **[`SECURITY.md`](SECURITY.md)** | Security policy, Claude Code hook security model, disclosure |
 | **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Contribution guidelines |
 | **[`tests/README.md`](tests/README.md)** | Test suite documentation |
