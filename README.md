@@ -660,6 +660,17 @@ CloakMCP/
 │   ├── test_mcp_server.py         # MCP server protocol tests
 │   ├── test_policy_enterprise.py  # Enterprise policy profile tests
 │   └── test_smoke.py              # Basic smoke test
+├── docs/                          # Developer documentation
+│   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
+│   ├── QUICKREF.md                # One-page cheat sheet for daily use
+│   ├── SERVER.md                  # Server configuration and security model
+│   ├── THREAT_MODEL.md            # Threat model and security analysis
+│   └── VSCODE_MANUAL.md           # Complete VS Code integration guide
+├── scripts/                       # Installation and hook infrastructure
+│   ├── hooks/                     # Hook shell scripts (6 tracked scripts)
+│   ├── settings/                  # Settings templates (hooks.json, hooks-hardened.json)
+│   ├── install_claude.sh          # Idempotent hook installer (--profile, --dry-run)
+│   └── install-claude-hooks.sh    # Legacy installer
 ├── demo/                          # Live demo (Spring Boot banking service)
 │   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
 │   ├── mcp_demo.sh                # MCP protocol + hook lifecycle demo
@@ -670,18 +681,24 @@ CloakMCP/
 │   ├── mcp_policy.yaml            # Default policy (10 rules)
 │   ├── mcp_policy_enterprise.yaml # Enterprise policy (26 rules, inherits default)
 │   └── policies/                  # Group policy examples (inheritance)
-├── docs/                          # Developer documentation
-│   ├── QUICKREF.md                # One-page cheat sheet for daily use
-│   ├── SERVER.md                  # Server configuration and security model
-│   ├── VSCODE_MANUAL.md           # Complete VS Code integration guide
-│   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
-│   └── THREAT_MODEL.md            # Threat model and security analysis
-├── .claude/                       # Claude Code integration
-│   ├── hooks/                     # Hook scripts (session-start/end, guard-write)
-│   └── settings.local.json        # Hook + permission configuration
+├── api/                           # REST Client examples
+│   └── requests.http              # VS Code REST Client test file
+├── assets/                        # Project assets (logo, media)
+├── audit/                         # Audit log output directory
+├── deploy/                        # Deployment configurations
+│   └── mcp-local.service          # Systemd unit (localhost only)
+├── keys/                          # Local keys (gitignored contents)
+├── .claude/                       # Claude Code integration (runtime, gitignored)
 ├── .mcp.json                      # MCP server discovery for Claude Code
-├── .vscode/                       # VS Code integration
+├── .vscode/                       # VS Code integration (tasks, keybindings)
+├── .mcpignore                     # Pack/unpack exclusion patterns
 ├── pyproject.toml                 # Package metadata (v0.6.0)
+├── pytest.ini                     # Pytest configuration
+├── CLAUDE.md                      # Project specifications (for LLMs)
+├── CHANGELOG.md                   # Full release history
+├── SECURITY.md                    # Security policy and disclosure
+├── CONTRIBUTING.md                # Contribution guidelines
+├── AUTHORS.md                     # Project authorship
 ├── LICENSE                        # MIT License
 └── README.md                      # This file
 ```
