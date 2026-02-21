@@ -694,7 +694,6 @@ CloakMCP/
 ├── .mcpignore                     # Pack/unpack exclusion patterns
 ├── pyproject.toml                 # Package metadata (v0.6.0)
 ├── pytest.ini                     # Pytest configuration
-├── CLAUDE.md                      # Project specifications (for LLMs)
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
 ├── CONTRIBUTING.md                # Contribution guidelines
