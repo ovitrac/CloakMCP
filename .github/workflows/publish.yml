@@ -1,0 +1,86 @@
+name: Publish cloakmcp to PyPI
+
+# Trigger: only on tagged releases (v0.6.0, v0.7.0, etc.)
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+
+  # ------------------------------------------------------------------
+  # Job 1: Run tests before publishing
+  # ------------------------------------------------------------------
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install cloakmcp with test extras
+        run: pip install -e ".[test]"
+
+      - name: Run tests (including slow)
+        run: pytest tests/ -v -m ""
+
+  # ------------------------------------------------------------------
+  # Job 2: Build the package
+  # ------------------------------------------------------------------
+  build:
+    name: Build distribution
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install --upgrade build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  # ------------------------------------------------------------------
+  # Job 3: Publish to PyPI via Trusted Publisher (OIDC)
+  # ------------------------------------------------------------------
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cloakmcp/
+
+    permissions:
+      id-token: write    # required for OIDC trusted publishing
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
