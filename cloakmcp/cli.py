@@ -2,7 +2,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
 
 from .normalizer import normalize
 from .policy import Policy
@@ -79,6 +79,98 @@ def sanitize_text(text: str, policy: Policy, dry_run: bool = False) -> Tuple[str
                 },
             )
     return ("".join(out) if not dry_run else text, blocked)
+
+def _print_status(status: Dict[str, Any]) -> None:
+    """Print human-readable status report to stderr."""
+    print("=" * 50, file=sys.stderr)
+    print("CloakMCP Status", file=sys.stderr)
+    print("=" * 50, file=sys.stderr)
+
+    # Session
+    active = status.get("session_active", False)
+    print(f"\nSession: {'ACTIVE' if active else 'INACTIVE'}", file=sys.stderr)
+    if active and status.get("session"):
+        session = status["session"]
+        print(f"  Policy: {session.get('policy', 'N/A')}", file=sys.stderr)
+        print(f"  Prefix: {session.get('prefix', 'N/A')}", file=sys.stderr)
+        if session.get("backup_path"):
+            print(f"  Backup: {session['backup_path']}", file=sys.stderr)
+
+    # Manifest
+    manifest = status.get("manifest")
+    if manifest:
+        print(f"\nManifest: {manifest.get('total_files', 0)} files "
+              f"(ts: {manifest.get('timestamp', 'N/A')})", file=sys.stderr)
+    else:
+        print("\nManifest: none", file=sys.stderr)
+
+    # Delta
+    delta = status.get("delta")
+    if delta:
+        new_files = delta.get("new_files", [])
+        deleted_files = delta.get("deleted_files", [])
+        changed_files = delta.get("changed_files", [])
+        unchanged = delta.get("unchanged_count", 0)
+        print(f"\nDelta: {len(new_files)} new, {len(deleted_files)} deleted, "
+              f"{len(changed_files)} changed, {unchanged} unchanged", file=sys.stderr)
+        for label, files in [("New", new_files), ("Deleted", deleted_files),
+                             ("Changed", changed_files)]:
+            for f in files[:10]:
+                print(f"  [{label}] {f}", file=sys.stderr)
+            if len(files) > 10:
+                print(f"  ... and {len(files) - 10} more", file=sys.stderr)
+
+    # Vault
+    vault = status.get("vault")
+    if vault:
+        print(f"\nVault: {vault.get('total_secrets', 0)} secrets, "
+              f"{vault.get('unique_tags', 0)} unique tags", file=sys.stderr)
+        print(f"  Path: {vault.get('vault_path', 'N/A')}", file=sys.stderr)
+    else:
+        print("\nVault: unavailable", file=sys.stderr)
+
+    # Tag residue
+    residue = status.get("tag_residue")
+    if residue:
+        print(f"\nTag residue: {residue.get('tags_found', 0)} found, "
+              f"{residue.get('tags_resolved', 0)} resolved, "
+              f"{residue.get('tags_unresolvable', 0)} unresolvable", file=sys.stderr)
+        unresolvable_files = residue.get("unresolvable_files", [])
+        for rel_path, count in unresolvable_files[:5]:
+            print(f"  {rel_path}: {count} tag(s)", file=sys.stderr)
+        if len(unresolvable_files) > 5:
+            print(f"  ... and {len(unresolvable_files) - 5} more files",
+                  file=sys.stderr)
+
+    # Backups
+    backups = status.get("backups")
+    if backups:
+        print(f"\nBackups: {len(backups)} available", file=sys.stderr)
+        for b in backups[:5]:
+            print(f"  {b['timestamp']}  ({b['file_count']} files)", file=sys.stderr)
+        if len(backups) > 5:
+            print(f"  ... and {len(backups) - 5} more", file=sys.stderr)
+    else:
+        print("\nBackups: none", file=sys.stderr)
+
+    # Legacy warning
+    legacy = status.get("legacy_warning")
+    if legacy:
+        print(f"\n{legacy}", file=sys.stderr)
+
+    # Recent audit
+    audit = status.get("recent_audit")
+    if audit:
+        print(f"\nRecent audit ({len(audit)} events):", file=sys.stderr)
+        for evt in audit:
+            ts = evt.get("ts", "?")
+            event_type = evt.get("event", "?")
+            print(f"  [{ts}] {event_type}", file=sys.stderr)
+    else:
+        print("\nAudit: no events", file=sys.stderr)
+
+    print("", file=sys.stderr)
+
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="cloak", description="Micro-Cleanse Preprocessor (local secret-removal)")
@@ -182,6 +274,24 @@ def main() -> None:
 
     # ── scripts-path ─────────────────────────────────────────────
     sub.add_parser("scripts-path", help="Print path to bundled installer scripts")
+
+    # ── v0.8.0: session status ─────────────────────────────────────
+    s_status = sub.add_parser("status", help="Show session status and diagnostics")
+    s_status.add_argument("--dir", default=".", help="Project root directory")
+    s_status.add_argument("--json", action="store_true", dest="json_output",
+                           help="Output as JSON (machine-readable)")
+    s_status.add_argument("--audit-lines", type=int, default=10,
+                           help="Number of recent audit events to show (default: 10)")
+
+    # ── v0.8.0: restore ───────────────────────────────────────────
+    s_restore = sub.add_parser("restore", help="Restore secrets (vault-based or from backup)")
+    s_restore.add_argument("--dir", default=".", help="Project root directory")
+    s_restore.add_argument("--from-backup", action="store_true",
+                            help="Restore from external backup instead of vault")
+    s_restore.add_argument("--force", action="store_true",
+                            help="Execute destructive backup restore (required with --from-backup)")
+    s_restore.add_argument("--backup-id", default=None,
+                            help="Timestamp of specific backup to restore from")
 
     # ── Dispatch ────────────────────────────────────────────────
 
@@ -375,6 +485,25 @@ def main() -> None:
         from .hooks import handle_recover
         _validate_dir_path(args.dir, "directory")
         handle_recover(project_dir=args.dir)
+        return
+
+    if args.cmd == "status":
+        from .hooks import handle_status
+        _validate_dir_path(args.dir, "directory")
+        result = handle_status(project_dir=args.dir, json_output=args.json_output,
+                               audit_lines=args.audit_lines)
+        if args.json_output:
+            import json as _json
+            print(_json.dumps(result, indent=2, default=str))
+        else:
+            _print_status(result)
+        return
+
+    if args.cmd == "restore":
+        from .hooks import handle_restore
+        _validate_dir_path(args.dir, "directory")
+        handle_restore(project_dir=args.dir, from_backup=args.from_backup,
+                       force=args.force, backup_id=args.backup_id)
         return
 
     if args.cmd == "verify":

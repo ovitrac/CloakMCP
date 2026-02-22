@@ -117,7 +117,7 @@ TOOLS: List[Dict[str, Any]] = [
 
 SERVER_INFO = {
     "name": "cloakmcp",
-    "version": "0.5.0",
+    "version": __import__("cloakmcp").__version__,
 }
 
 CAPABILITIES = {

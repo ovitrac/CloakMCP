@@ -86,6 +86,47 @@ def cleanup_backup(backup_path: str) -> None:
         shutil.rmtree(backup_path, ignore_errors=True)
 
 
+def restore_from_backup(
+    backup_path: str, project_dir: str, dry_run: bool = False
+) -> Tuple[int, int]:
+    """Copy files from external backup back into project directory.
+
+    DESTRUCTIVE when dry_run=False: overwrites current files with backup copies.
+
+    Args:
+        backup_path: Path to the timestamped backup directory
+        project_dir: Project root directory to restore into
+        dry_run: If True, count files only without copying
+
+    Returns:
+        (restored_count, skipped_count)
+    """
+    if not os.path.isdir(backup_path):
+        return (0, 0)
+
+    restored = 0
+    skipped = 0
+
+    for dirpath, _dirnames, filenames in os.walk(backup_path):
+        for name in filenames:
+            src = os.path.join(dirpath, name)
+            rel_path = os.path.relpath(src, backup_path)
+            target = os.path.join(project_dir, rel_path)
+
+            if dry_run:
+                restored += 1
+                continue
+
+            try:
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(src, target)
+                restored += 1
+            except OSError:
+                skipped += 1
+
+    return (restored, skipped)
+
+
 def warn_legacy_backups(root: str) -> Optional[str]:
     """Return warning string if legacy .cloak-backups/ exists in project tree."""
     legacy_path = os.path.join(root, BACKUP_DIR)

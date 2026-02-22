@@ -21,12 +21,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from .dirpack import (
     pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta,
     load_ignores, create_backup, cleanup_backup, warn_legacy_backups,
+    restore_from_backup,
 )
 from .filepack import pack_text, TAG_RE
 from .policy import Policy
 from .scanner import scan
 from .normalizer import normalize
-from .storage import Vault
+from .storage import Vault, BACKUPS_DIR, _project_slug
 
 SESSION_STATE_FILE = ".cloak-session-state"
 SESSION_MANIFEST_FILE = ".cloak-session-manifest.json"
@@ -160,6 +161,75 @@ def _append_audit(project_dir: str, event: Dict[str, Any]) -> None:
             f.write("\n")
     except OSError:
         pass  # Best-effort: never fail on audit write
+
+
+def _read_audit_tail(project_dir: str, n: int = 10) -> List[Dict[str, Any]]:
+    """Read last N events from the audit JSONL file (most-recent-first).
+
+    Args:
+        project_dir: Project root directory
+        n: Number of events to return
+
+    Returns:
+        List of audit event dicts, most recent first. Empty if no file.
+    """
+    audit_path = os.path.join(project_dir, AUDIT_FILE)
+    if not os.path.isfile(audit_path):
+        return []
+    try:
+        with open(audit_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+
+    events: List[Dict[str, Any]] = []
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        if len(events) >= n:
+            break
+    return events
+
+
+def list_backups(project_dir: str) -> List[Dict[str, Any]]:
+    """Enumerate available backups for a project.
+
+    Args:
+        project_dir: Project root directory
+
+    Returns:
+        List of {timestamp, path, file_count} sorted descending (most recent first).
+    """
+    slug = _project_slug(project_dir)
+    slug_dir = os.path.join(BACKUPS_DIR, slug)
+    if not os.path.isdir(slug_dir):
+        return []
+
+    backups: List[Dict[str, Any]] = []
+    try:
+        entries = sorted(os.listdir(slug_dir), reverse=True)
+    except OSError:
+        return []
+
+    for entry in entries:
+        entry_path = os.path.join(slug_dir, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        file_count = 0
+        for _dp, _dns, fns in os.walk(entry_path):
+            file_count += len(fns)
+        backups.append({
+            "timestamp": entry,
+            "path": entry_path,
+            "file_count": file_count,
+        })
+
+    return backups
 
 
 # ── Hook handlers ───────────────────────────────────────────────
@@ -318,6 +388,101 @@ def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
         )
 
     return {}
+
+
+def handle_status(
+    project_dir: str = ".", json_output: bool = False, audit_lines: int = 10
+) -> Dict[str, Any]:
+    """Collect session diagnostics (read-only).
+
+    Gathers session state, manifest summary, file delta, vault stats,
+    tag residue, available backups, legacy backup warnings, and recent
+    audit events.
+
+    Args:
+        project_dir: Project root directory
+        json_output: If True, caller will format as JSON (no effect on collection)
+        audit_lines: Number of recent audit events to include
+
+    Returns:
+        Structured dict with all diagnostic sections. Sections that fail
+        are set to None.
+    """
+    project_dir = os.path.abspath(project_dir)
+    status: Dict[str, Any] = {}
+
+    # 1. Session state
+    try:
+        state = _read_state(project_dir)
+        status["session_active"] = state is not None
+        status["session"] = state
+    except Exception:
+        status["session_active"] = False
+        status["session"] = None
+
+    # 2. Manifest
+    try:
+        manifest = _read_manifest(project_dir)
+        if manifest is not None:
+            status["manifest"] = {
+                "timestamp": manifest.get("ts"),
+                "total_files": manifest.get("total_files", 0),
+            }
+        else:
+            status["manifest"] = None
+    except Exception:
+        status["manifest"] = None
+
+    # 3. File delta (only when manifest exists)
+    try:
+        if manifest is not None:
+            ignores = load_ignores(project_dir)
+            delta = compute_delta(manifest, project_dir, ignores)
+            status["delta"] = delta
+        else:
+            status["delta"] = None
+    except Exception:
+        status["delta"] = None
+
+    # 4. Vault stats
+    try:
+        vault = Vault(project_dir)
+        stats = vault.get_stats()
+        stats["vault_path"] = vault.vault_path
+        status["vault"] = stats
+    except Exception:
+        status["vault"] = None
+
+    # 5. Legacy warning
+    try:
+        legacy = warn_legacy_backups(project_dir)
+        status["legacy_warning"] = legacy
+    except Exception:
+        status["legacy_warning"] = None
+
+    # 6. Available backups
+    try:
+        status["backups"] = list_backups(project_dir)
+    except Exception:
+        status["backups"] = None
+
+    # 7. Recent audit
+    try:
+        status["recent_audit"] = _read_audit_tail(project_dir, n=audit_lines)
+    except Exception:
+        status["recent_audit"] = None
+
+    # 8. Tag residue
+    try:
+        residue = verify_unpack(project_dir)
+        status["tag_residue"] = residue
+    except Exception:
+        status["tag_residue"] = None
+
+    return status
+
+
+# ── Severity helpers ─────────────────────────────────────────────
 
 
 def _effective_severity(rule: Any) -> str:
@@ -734,6 +899,180 @@ def handle_recover(project_dir: str = ".") -> None:
     except Exception as e:
         print(f"Recovery failed: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def handle_restore(
+    project_dir: str = ".",
+    from_backup: bool = False,
+    force: bool = False,
+    backup_id: Optional[str] = None,
+) -> None:
+    """Restore secrets — vault-based (default) or from backup.
+
+    Vault-based (default):
+        Replaces tags with secrets from vault, verifies, computes delta,
+        and cleans session state.
+
+    Backup-based (--from-backup):
+        Copies pre-redaction files from external backup. Requires --force
+        for execution; without it, shows dry-run preview.
+
+    Args:
+        project_dir: Project root directory
+        from_backup: If True, restore from external backup instead of vault
+        force: Execute destructive backup restore (required with --from-backup)
+        backup_id: Timestamp of specific backup to restore from
+    """
+    project_dir = os.path.abspath(project_dir)
+
+    if from_backup:
+        _restore_from_backup(project_dir, force, backup_id)
+    else:
+        _restore_from_vault(project_dir)
+
+
+def _restore_from_vault(project_dir: str) -> None:
+    """Vault-based restore: replace tags with secrets from vault."""
+    # Warn about legacy backups
+    legacy_warn = warn_legacy_backups(project_dir)
+    if legacy_warn:
+        print(legacy_warn, file=sys.stderr)
+
+    # Read state and check vault
+    state = _read_state(project_dir)
+    vault = Vault(project_dir)
+    vault_stats = vault.get_stats()
+
+    if state is None and vault_stats["total_secrets"] == 0:
+        print("Nothing to restore. No session state and vault is empty.", file=sys.stderr)
+        return
+
+    if state is None:
+        print(
+            "[CloakMCP] No session state found, but vault has data. "
+            "Proceeding with tag replacement...",
+            file=sys.stderr,
+        )
+
+    # Read manifest before unpack
+    manifest = _read_manifest(project_dir)
+
+    # Unpack
+    try:
+        unpack_dir(project_dir, backup=False)
+    except Exception as e:
+        print(f"[CloakMCP] Restore failed during unpack: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # R4: verification
+    verification = verify_unpack(project_dir)
+    print(f"Verification: {verification['tags_found']} tags found, "
+          f"{verification['tags_resolved']} resolved, "
+          f"{verification['tags_unresolvable']} unresolvable", file=sys.stderr)
+
+    if verification["unresolvable_files"]:
+        for rel_path, count in verification["unresolvable_files"][:5]:
+            print(f"  {rel_path}: {count} unresolvable tag(s)", file=sys.stderr)
+
+    # R5: delta (if manifest exists)
+    if manifest is not None:
+        ignores = load_ignores(project_dir)
+        delta = compute_delta(manifest, project_dir, ignores)
+        new_count = len(delta.get("new_files", []))
+        del_count = len(delta.get("deleted_files", []))
+        chg_count = len(delta.get("changed_files", []))
+        unch_count = delta.get("unchanged_count", 0)
+        print(f"Delta: {new_count} new, {del_count} deleted, "
+              f"{chg_count} changed, {unch_count} unchanged", file=sys.stderr)
+
+    # Clean up
+    _remove_state(project_dir)
+    if state and state.get("backup_path"):
+        cleanup_backup(state["backup_path"])
+    _remove_manifest(project_dir)
+
+    # Audit
+    _append_audit(project_dir, {
+        "event": "restore_vault",
+        "tags_found": verification["tags_found"],
+        "tags_unresolvable": verification["tags_unresolvable"],
+    })
+
+    print("Restore complete.", file=sys.stderr)
+
+    if verification["tags_unresolvable"] > 0:
+        sys.exit(1)
+
+
+def _restore_from_backup(
+    project_dir: str, force: bool, backup_id: Optional[str]
+) -> None:
+    """Backup-based restore: copy pre-redaction files from external backup."""
+    backups = list_backups(project_dir)
+
+    if not backups:
+        print("[CloakMCP] No backups available for this project.", file=sys.stderr)
+        sys.exit(1)
+
+    # No backup_id: list available backups
+    if backup_id is None:
+        print("Available backups:", file=sys.stderr)
+        for b in backups:
+            print(f"  {b['timestamp']}  ({b['file_count']} files)  {b['path']}",
+                  file=sys.stderr)
+        print(
+            "\nUsage: cloak restore --from-backup --backup-id <timestamp>",
+            file=sys.stderr,
+        )
+        return
+
+    # Find matching backup
+    matching = [b for b in backups if b["timestamp"] == backup_id]
+    if not matching:
+        print(f"[CloakMCP] No backup with timestamp '{backup_id}'.", file=sys.stderr)
+        print("Available timestamps:", file=sys.stderr)
+        for b in backups:
+            print(f"  {b['timestamp']}", file=sys.stderr)
+        sys.exit(1)
+
+    backup = matching[0]
+
+    if not force:
+        # Dry-run preview
+        restored, skipped = restore_from_backup(
+            backup["path"], project_dir, dry_run=True
+        )
+        print(f"[DRY RUN] Would restore {restored} files from backup "
+              f"{backup['timestamp']}.", file=sys.stderr)
+        print(
+            "WARNING: This is DESTRUCTIVE — current files will be overwritten "
+            "with backup copies.", file=sys.stderr,
+        )
+        print(
+            "Add --force to execute: "
+            f"cloak restore --from-backup --backup-id {backup_id} --force",
+            file=sys.stderr,
+        )
+        return
+
+    # Execute restore
+    restored, skipped = restore_from_backup(
+        backup["path"], project_dir, dry_run=False
+    )
+    print(f"Restored {restored} files from backup {backup['timestamp']} "
+          f"({skipped} skipped).", file=sys.stderr)
+
+    # Clean state
+    _remove_state(project_dir)
+    _remove_manifest(project_dir)
+
+    # Audit
+    _append_audit(project_dir, {
+        "event": "restore_backup",
+        "backup_timestamp": backup["timestamp"],
+        "restored_files": restored,
+        "skipped_files": skipped,
+    })
 
 
 # ── Main dispatcher (called by `cloak hook <event>`) ────────────

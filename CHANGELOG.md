@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-22
+
+### Added
+- **`cloak status`**: read-only session diagnostics — session state, manifest summary,
+  file delta, vault stats, tag residue, available backups, legacy backup warnings, recent
+  audit events. Supports `--json` and `--audit-lines N`.
+- **`cloak restore`**: two restore modes:
+  - **Vault-based** (default): replaces tags with secrets, runs R4 verification + R5 delta,
+    cleans session state. Works even without session state if vault has data.
+  - **Backup-based** (`--from-backup`): copies pre-redaction files from external backup. Requires
+    `--force` for execution. Without `--force`, shows dry-run preview. Lists available backups
+    when no `--backup-id` specified.
+- `restore_from_backup()` in dirpack.py: file-copy restore with dry-run support
+- `_read_audit_tail()`, `list_backups()` helpers in hooks.py
+- New audit events: `restore_vault`, `restore_backup`
+- ~37 new tests across 5 test classes
+
 ## [0.7.0] - 2026-02-22
 
 ### Security
@@ -222,7 +239,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ovitrac/CloakMCP/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/ovitrac/CloakMCP/compare/v0.6.0...v0.6.3
 [0.6.0]: https://github.com/ovitrac/CloakMCP/compare/v0.5.1...v0.6.0

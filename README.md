@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.7.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-240%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.8.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -206,6 +206,8 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
 | `cloak sanitize-stdin --policy POL` | Sanitize text from stdin to stdout (pipe helper) |
 | `cloak repack --dir DIR --policy POL` | Incremental re-pack: scan new/changed files only |
 | `cloak verify --dir DIR` | Post-unpack verification: scan for residual tags |
+| `cloak status --dir DIR` | Session diagnostics: state, manifest, delta, vault, tags, backups, audit |
+| `cloak restore --dir DIR` | Restore secrets from vault (default) or `--from-backup --force` |
 | `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, guard-read, prompt-guard, safety-guard, audit-log) |
 | `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio, any MCP client) |
 
@@ -386,6 +388,8 @@ sequenceDiagram
     └── <project-slug>/           # Pre-redaction backups (auto-cleaned on session end)
         └── <timestamp>/          # Timestamped snapshot (outside project tree)
 ```
+
+Backups can be restored with `cloak restore --from-backup --backup-id <timestamp> --force`.
 
 - **Slug**: 16-character SHA-256 prefix of project's absolute path
 - **Encryption**: AES-128 via `cryptography.Fernet`
@@ -630,14 +634,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (240 passing)
+# Run all tests (277 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 240+ tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
+**Test suite**: 277 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
 
 ---
 
@@ -660,7 +664,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (240+ tests, 7 files)
+├── tests/                         # Test suite (277 tests, 7 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
@@ -700,7 +704,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.7.0)
+├── pyproject.toml                 # Package metadata (v0.8.0)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -757,7 +761,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.7.0 — Backup exfiltration fix (backups moved outside project tree), guard-read hook (hardened profile), legacy backup warnings
+**Latest**: v0.8.0 — `cloak status` diagnostics, `cloak restore` (vault-based + backup-based), ~37 new tests
 
 ---
 

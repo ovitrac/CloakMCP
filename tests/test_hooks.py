@@ -17,6 +17,8 @@ from cloakmcp.hooks import (
     handle_safety_guard,
     handle_audit_log,
     handle_recover,
+    handle_status,
+    handle_restore,
     _write_state,
     _read_state,
     _remove_state,
@@ -24,11 +26,13 @@ from cloakmcp.hooks import (
     _read_manifest,
     _remove_manifest,
     _append_audit,
+    _read_audit_tail,
+    list_backups,
 )
 from cloakmcp.dirpack import (
     verify_unpack, build_manifest, compute_delta, load_ignores,
     repack_dir, repack_file, create_backup, cleanup_backup, warn_legacy_backups,
-    BACKUP_DIR,
+    restore_from_backup, BACKUP_DIR,
 )
 from cloakmcp.storage import BACKUPS_DIR
 from cloakmcp.filepack import pack_text, TAG_RE
@@ -1647,3 +1651,357 @@ class TestGuardRead:
         handle_guard_read(str(tmp_path))
         audit_path = tmp_path / AUDIT_FILE
         assert not audit_path.exists()
+
+
+# ── v0.8.0: _read_audit_tail ──────────────────────────────────────
+
+
+class TestReadAuditTail:
+    """Tests for _read_audit_tail() helper."""
+
+    def test_reads_last_n_events(self, tmp_path):
+        """Write 20 events, request 5, get 5."""
+        for i in range(20):
+            _append_audit(str(tmp_path), {"event": f"evt_{i}", "index": i})
+        result = _read_audit_tail(str(tmp_path), n=5)
+        assert len(result) == 5
+
+    def test_empty_audit_returns_empty(self, tmp_path):
+        """No audit file -> empty list."""
+        result = _read_audit_tail(str(tmp_path))
+        assert result == []
+
+    def test_fewer_events_than_n(self, tmp_path):
+        """1 event, request 10, get 1."""
+        _append_audit(str(tmp_path), {"event": "only_one"})
+        result = _read_audit_tail(str(tmp_path), n=10)
+        assert len(result) == 1
+        assert result[0]["event"] == "only_one"
+
+    def test_returns_most_recent_first(self, tmp_path):
+        """Two events — index 0 should be the latest."""
+        _append_audit(str(tmp_path), {"event": "first", "order": 1})
+        _append_audit(str(tmp_path), {"event": "second", "order": 2})
+        result = _read_audit_tail(str(tmp_path), n=10)
+        assert len(result) == 2
+        assert result[0]["event"] == "second"
+        assert result[1]["event"] == "first"
+
+
+# ── v0.8.0: list_backups ──────────────────────────────────────────
+
+
+class TestListBackups:
+    """Tests for list_backups() helper."""
+
+    def test_lists_existing_backups(self, tmp_path):
+        """Create a backup, list, verify count."""
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        result = list_backups(str(tmp_path))
+        assert len(result) >= 1
+        assert "timestamp" in result[0]
+        assert "path" in result[0]
+        assert result[0]["file_count"] >= 1
+
+    def test_no_backups_returns_empty(self, tmp_path):
+        """Fresh dir -> empty list."""
+        result = list_backups(str(tmp_path))
+        assert result == []
+
+    def test_sorted_most_recent_first(self, tmp_path):
+        """Two backups created with different timestamps, verify order."""
+        import time
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        time.sleep(1.1)  # Ensure different timestamp
+        create_backup(str(tmp_path), external=True)
+        result = list_backups(str(tmp_path))
+        assert len(result) >= 2
+        # Most recent first (lexicographic descending on timestamp dirs)
+        assert result[0]["timestamp"] >= result[1]["timestamp"]
+
+
+# ── v0.8.0: restore_from_backup ───────────────────────────────────
+
+
+class TestRestoreFromBackup:
+    """Tests for restore_from_backup() in dirpack.py."""
+
+    def test_copies_files_back(self, tmp_path):
+        """Backup a file, modify it, restore, verify original content."""
+        f = tmp_path / "data.txt"
+        f.write_text("original content\n")
+        backup_path = create_backup(str(tmp_path), external=True)
+        f.write_text("modified content\n")
+        restored, skipped = restore_from_backup(backup_path, str(tmp_path))
+        assert restored >= 1
+        assert skipped == 0
+        assert f.read_text() == "original content\n"
+
+    def test_dry_run_no_modification(self, tmp_path):
+        """dry_run=True — file NOT overwritten."""
+        f = tmp_path / "data.txt"
+        f.write_text("original\n")
+        backup_path = create_backup(str(tmp_path), external=True)
+        f.write_text("modified\n")
+        restored, skipped = restore_from_backup(backup_path, str(tmp_path), dry_run=True)
+        assert restored >= 1
+        assert f.read_text() == "modified\n"  # NOT overwritten
+
+    def test_nonexistent_backup_returns_zero(self, tmp_path):
+        """Bad path -> (0, 0)."""
+        restored, skipped = restore_from_backup("/nonexistent/path", str(tmp_path))
+        assert restored == 0
+        assert skipped == 0
+
+
+# ── v0.8.0: status ─────────────────────────────────────────────────
+
+
+class TestStatus:
+    """Tests for handle_status() — read-only session diagnostics."""
+
+    def test_status_no_session(self, tmp_path):
+        """Inactive session, no session key."""
+        result = handle_status(str(tmp_path))
+        assert result["session_active"] is False
+        assert result["session"] is None
+
+    def test_status_active_session(self, tmp_path, monkeypatch):
+        """Pack -> status -> verify session dict present."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        result = handle_status(str(tmp_path))
+        assert result["session_active"] is True
+        assert result["session"] is not None
+        assert "policy" in result["session"]
+        # Clean up
+        handle_session_end(str(tmp_path))
+
+    def test_status_manifest_present(self, tmp_path, monkeypatch):
+        """Verify manifest.total_files and timestamp during active session."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        result = handle_status(str(tmp_path))
+        assert result["manifest"] is not None
+        assert result["manifest"]["total_files"] >= 1
+        assert result["manifest"]["timestamp"] is not None
+        handle_session_end(str(tmp_path))
+
+    def test_status_manifest_absent(self, tmp_path):
+        """No session -> manifest is None."""
+        result = handle_status(str(tmp_path))
+        assert result["manifest"] is None
+
+    def test_status_delta_new_file(self, tmp_path, monkeypatch):
+        """Create file during session -> shows in delta.new_files."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        # Create new file during session
+        (tmp_path / "new_file.txt").write_text("new content\n")
+        result = handle_status(str(tmp_path))
+        assert result["delta"] is not None
+        assert "new_file.txt" in result["delta"]["new_files"]
+        handle_session_end(str(tmp_path))
+
+    def test_status_vault_stats(self, tmp_path, monkeypatch):
+        """Pack -> vault.total_secrets >= 1."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        result = handle_status(str(tmp_path))
+        assert result["vault"] is not None
+        assert result["vault"]["total_secrets"] >= 1
+        handle_session_end(str(tmp_path))
+
+    def test_status_vault_empty(self, tmp_path):
+        """Fresh project -> total_secrets == 0."""
+        result = handle_status(str(tmp_path))
+        assert result["vault"] is not None
+        assert result["vault"]["total_secrets"] == 0
+
+    def test_status_legacy_backup_warning(self, tmp_path):
+        """mkdir .cloak-backups -> warning present."""
+        (tmp_path / BACKUP_DIR).mkdir()
+        result = handle_status(str(tmp_path))
+        assert result["legacy_warning"] is not None
+        assert "WARNING" in result["legacy_warning"]
+
+    def test_status_no_legacy_warning(self, tmp_path):
+        """Clean -> warning is None."""
+        result = handle_status(str(tmp_path))
+        assert result["legacy_warning"] is None
+
+    def test_status_audit_events(self, tmp_path):
+        """Write 2 events -> recent_audit length 2, most-recent-first."""
+        _append_audit(str(tmp_path), {"event": "first"})
+        _append_audit(str(tmp_path), {"event": "second"})
+        result = handle_status(str(tmp_path))
+        assert result["recent_audit"] is not None
+        assert len(result["recent_audit"]) == 2
+        assert result["recent_audit"][0]["event"] == "second"
+
+    def test_status_audit_lines_limit(self, tmp_path):
+        """20 events, limit=5 -> 5 returned."""
+        for i in range(20):
+            _append_audit(str(tmp_path), {"event": f"evt_{i}"})
+        result = handle_status(str(tmp_path), audit_lines=5)
+        assert len(result["recent_audit"]) == 5
+
+    def test_status_no_audit(self, tmp_path):
+        """No audit file -> empty list."""
+        result = handle_status(str(tmp_path))
+        assert result["recent_audit"] is not None
+        assert result["recent_audit"] == []
+
+    def test_status_tag_residue(self, tmp_path):
+        """Orphaned tag -> tags_found=1, unresolvable=1."""
+        (tmp_path / "orphaned.txt").write_text("ref: TAG-aabbccddee11\n")
+        result = handle_status(str(tmp_path))
+        assert result["tag_residue"] is not None
+        assert result["tag_residue"]["tags_found"] == 1
+        assert result["tag_residue"]["tags_unresolvable"] == 1
+
+    def test_status_tag_residue_clean(self, tmp_path):
+        """Clean text -> tags_found=0."""
+        (tmp_path / "clean.txt").write_text("no tags here\n")
+        result = handle_status(str(tmp_path))
+        assert result["tag_residue"] is not None
+        assert result["tag_residue"]["tags_found"] == 0
+
+    def test_status_backups_listed(self, tmp_path):
+        """Create backup -> backups list non-empty."""
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        result = handle_status(str(tmp_path))
+        assert result["backups"] is not None
+        assert len(result["backups"]) >= 1
+
+
+# ── v0.8.0: restore ────────────────────────────────────────────────
+
+
+class TestRestore:
+    """Tests for handle_restore() — vault-based and backup-based restore."""
+
+    # ── Vault-based ─────────────────────────────────────────────
+
+    def test_vault_restore_unpacks(self, tmp_path, monkeypatch):
+        """Pack -> restore -> verify secret back in file."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        f = tmp_path / "secret.txt"
+        f.write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        assert "alice@example.org" not in f.read_text()
+        handle_restore(str(tmp_path))
+        assert "alice@example.org" in f.read_text()
+
+    def test_vault_restore_removes_state(self, tmp_path, monkeypatch):
+        """State + manifest cleaned up after vault restore."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: bob@example.org\n")
+        handle_session_start(str(tmp_path))
+        assert _read_state(str(tmp_path)) is not None
+        handle_restore(str(tmp_path))
+        assert _read_state(str(tmp_path)) is None
+        assert _read_manifest(str(tmp_path)) is None
+
+    def test_vault_restore_no_session_empty_vault(self, tmp_path, capsys):
+        """No state + empty vault -> 'Nothing to restore'."""
+        handle_restore(str(tmp_path))
+        captured = capsys.readouterr()
+        assert "Nothing to restore" in captured.err
+
+    def test_vault_restore_writes_audit(self, tmp_path, monkeypatch):
+        """restore_vault event in audit log."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        handle_restore(str(tmp_path))
+        audit_path = tmp_path / AUDIT_FILE
+        assert audit_path.exists()
+        events = [json.loads(line) for line in audit_path.read_text().strip().splitlines()]
+        restore_events = [e for e in events if e["event"] == "restore_vault"]
+        assert len(restore_events) == 1
+
+    # ── Backup-based ────────────────────────────────────────────
+
+    def test_backup_list_shown_no_backup_id(self, tmp_path, capsys):
+        """No backup_id -> 'Available backups' in stderr."""
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        handle_restore(str(tmp_path), from_backup=True)
+        captured = capsys.readouterr()
+        assert "Available backups" in captured.err
+
+    def test_backup_no_backups_exits(self, tmp_path):
+        """No backups -> exit 1."""
+        with pytest.raises(SystemExit) as exc_info:
+            handle_restore(str(tmp_path), from_backup=True)
+        assert exc_info.value.code == 1
+
+    def test_backup_dry_run_without_force(self, tmp_path, capsys):
+        """backup_id but no --force -> 'DRY RUN' + 'DESTRUCTIVE'."""
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        backups = list_backups(str(tmp_path))
+        ts = backups[0]["timestamp"]
+        handle_restore(str(tmp_path), from_backup=True, backup_id=ts)
+        captured = capsys.readouterr()
+        assert "DRY RUN" in captured.err
+        assert "DESTRUCTIVE" in captured.err
+
+    def test_backup_force_restores(self, tmp_path):
+        """Backup -> modify -> restore --force -> original content."""
+        f = tmp_path / "data.txt"
+        f.write_text("original\n")
+        create_backup(str(tmp_path), external=True)
+        f.write_text("modified\n")
+        backups = list_backups(str(tmp_path))
+        ts = backups[0]["timestamp"]
+        handle_restore(str(tmp_path), from_backup=True, force=True, backup_id=ts)
+        assert f.read_text() == "original\n"
+
+    def test_backup_force_cleans_state(self, tmp_path):
+        """State removed after backup restore."""
+        f = tmp_path / "data.txt"
+        f.write_text("content\n")
+        _write_state(str(tmp_path), "pol.yaml", "TAG")
+        create_backup(str(tmp_path), external=True)
+        backups = list_backups(str(tmp_path))
+        ts = backups[0]["timestamp"]
+        handle_restore(str(tmp_path), from_backup=True, force=True, backup_id=ts)
+        assert _read_state(str(tmp_path)) is None
+
+    def test_backup_force_writes_audit(self, tmp_path):
+        """restore_backup event with timestamp."""
+        f = tmp_path / "data.txt"
+        f.write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        backups = list_backups(str(tmp_path))
+        ts = backups[0]["timestamp"]
+        handle_restore(str(tmp_path), from_backup=True, force=True, backup_id=ts)
+        audit_path = tmp_path / AUDIT_FILE
+        assert audit_path.exists()
+        events = [json.loads(line) for line in audit_path.read_text().strip().splitlines()]
+        restore_events = [e for e in events if e["event"] == "restore_backup"]
+        assert len(restore_events) == 1
+        assert restore_events[0]["backup_timestamp"] == ts
+
+    def test_backup_wrong_timestamp_exits(self, tmp_path):
+        """Bad backup_id -> exit 1."""
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(str(tmp_path), external=True)
+        with pytest.raises(SystemExit) as exc_info:
+            handle_restore(str(tmp_path), from_backup=True, backup_id="99991231_235959")
+        assert exc_info.value.code == 1
+
+    def test_backup_force_without_from_backup_ignored(self, tmp_path, capsys):
+        """--force alone has no effect (vault mode runs)."""
+        handle_restore(str(tmp_path), force=True)
+        captured = capsys.readouterr()
+        assert "Nothing to restore" in captured.err
