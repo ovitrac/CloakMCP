@@ -29,6 +29,9 @@ jobs:
       - name: Install cloakmcp with test extras
         run: pip install -e ".[test]"
 
+      - name: Generate test HMAC key
+        run: mkdir -p keys && openssl rand -hex 32 > keys/mcp_hmac_key
+
       - name: Run tests (including slow)
         run: pytest tests/ -v -m ""
 
