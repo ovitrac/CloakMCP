@@ -179,6 +179,9 @@ def main() -> None:
     s_verify = sub.add_parser("verify", help="Scan for residual tags after unpack")
     s_verify.add_argument("--dir", required=True, help="Directory to verify")
 
+    # ── scripts-path ─────────────────────────────────────────────
+    sub.add_parser("scripts-path", help="Print path to bundled installer scripts")
+
     # ── Dispatch ────────────────────────────────────────────────
 
     args = p.parse_args()
@@ -388,6 +391,11 @@ def main() -> None:
         if result["tags_unresolvable"] > 0:
             sys.exit(1)
         sys.exit(0)
+
+    if args.cmd == "scripts-path":
+        from importlib.resources import files
+        print(files("cloakmcp") / "scripts")
+        return
 
 if __name__ == "__main__":
     main()

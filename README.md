@@ -11,8 +11,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.6.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-214%20passing-brightgreen.svg)](./tests)
+[![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
+[![Version](https://img.shields.io/badge/version-0.6.2-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-216%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -669,11 +670,10 @@ CloakMCP/
 │   ├── VSCODE_MANUAL.md           # Complete VS Code integration guide
 │   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
 │   └── THREAT_MODEL.md            # Threat model and security analysis
-├── scripts/                       # Installation and hook infrastructure
-│   ├── hooks/                     # Hook shell scripts (6 tracked scripts)
-│   ├── settings/                  # Settings templates (hooks.json, hooks-hardened.json)
-│   ├── install_claude.sh          # Idempotent hook installer (--profile, --dry-run)
-│   └── install-claude-hooks.sh    # Legacy installer
+│   └── scripts/                   # Bundled installer + hooks (included in PyPI wheel)
+│       ├── install_claude.sh      # Idempotent hook installer (--profile, --dry-run)
+│       ├── hooks/                 # Hook shell scripts (6 tracked scripts)
+│       └── settings/              # Settings templates (hooks.json, hooks-hardened.json)
 ├── demo/                          # Live demo (Spring Boot banking service)
 │   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
 │   ├── mcp_demo.sh                # MCP protocol + hook lifecycle demo

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloakmcp"
-version = "0.6.1"
+version = "0.6.2"
 description = "Micro-Cleanse Preprocessor: local secret-removal agent (with vault pack/unpack)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,6 +38,13 @@ cloak-mcp-server = "cloakmcp.mcp_server:main"
 where = ["."]
 include = ["cloakmcp*"]
 exclude = ["tests*", "examples*", "keys*", "audit*", "deploy*", "api*"]
+
+[tool.setuptools.package-data]
+cloakmcp = [
+    "scripts/*.sh",
+    "scripts/hooks/*.sh",
+    "scripts/settings/*.json",
+]
 
 [tool.black]
 line-length = 100

@@ -9,7 +9,7 @@ Open a private issue or email the maintainers (without real secrets). Provide ve
 
 CloakMCP's core CLI (`cloak pack/unpack/scan/sanitize`) is **LLM-agnostic** — it works with any LLM. The security properties of the vault (encryption, HMAC-based tags, local-only storage) apply universally regardless of which LLM you use.
 
-This document additionally describes the security model of the **Claude Code integration**, which uses Claude Code hooks (`SessionStart`, `SessionEnd`, `PreToolUse`, `UserPromptSubmit`) to automate secret protection within Claude Code sessions. The hook-based protections described below (guard-write, safety-guard, prompt-guard, dried-channel architecture) are **specific to the Claude Code integration** and require the hooks to be installed via `scripts/install_claude.sh`.
+This document additionally describes the security model of the **Claude Code integration**, which uses Claude Code hooks (`SessionStart`, `SessionEnd`, `PreToolUse`, `UserPromptSubmit`) to automate secret protection within Claude Code sessions. The hook-based protections described below (guard-write, safety-guard, prompt-guard, dried-channel architecture) are **specific to the Claude Code integration** and require the hooks to be installed via `bash "$(cloak scripts-path)/install_claude.sh"`.
 
 ## Protection scope
 

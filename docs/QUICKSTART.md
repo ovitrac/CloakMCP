@@ -83,19 +83,24 @@ CloakMCP works with **any** LLM. The only difference is automation:
 
 ```bash
 cd /path/to/your-project   # must have CloakMCP installed
-scripts/install_claude.sh
+
+# If installed via pip:
+bash "$(cloak scripts-path)/install_claude.sh"
+
+# If cloned from git:
+bash cloakmcp/scripts/install_claude.sh
 ```
 
 This installs the `secrets-only` profile (default). For the hardened profile which also blocks dangerous shell commands:
 
 ```bash
-scripts/install_claude.sh --profile hardened
+bash "$(cloak scripts-path)/install_claude.sh" --profile hardened
 ```
 
 Preview what the installer will do without changing anything:
 
 ```bash
-scripts/install_claude.sh --dry-run
+bash "$(cloak scripts-path)/install_claude.sh" --dry-run
 ```
 
 ### What the installer creates
@@ -141,7 +146,7 @@ cat .cloak-session-audit.jsonl | python3 -m json.tool
 ### Uninstall hooks
 
 ```bash
-scripts/install_claude.sh --uninstall
+bash "$(cloak scripts-path)/install_claude.sh" --uninstall
 ```
 
 ---
@@ -281,7 +286,7 @@ This detects stale `.cloak-session-state` files and runs unpack to restore secre
 |---------|-------|-----|
 | `cloak: command not found` | Venv not activated | `source .venv/bin/activate` |
 | No secrets detected | Wrong policy or file excluded | Check policy path, check `.mcpignore` |
-| Hooks not firing | Not installed or wrong directory | Run `scripts/install_claude.sh`, verify `.claude/settings.local.json` |
+| Hooks not firing | Not installed or wrong directory | Run `bash "$(cloak scripts-path)/install_claude.sh"`, verify `.claude/settings.local.json` |
 | `InvalidToken` on unpack | Wrong vault key | Check `~/.cloakmcp/keys/` — slug matches project path |
 | Tags remain after unpack | Incomplete unpack | Run `cloak verify --dir .` to find residual tags |
 | Session stuck (packed) | Crash without SessionEnd | `cloak recover --dir .` |
