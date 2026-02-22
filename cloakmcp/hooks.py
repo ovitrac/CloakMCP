@@ -18,7 +18,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from .dirpack import pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta, load_ignores
+from .dirpack import (
+    pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta,
+    load_ignores, create_backup, cleanup_backup, warn_legacy_backups,
+)
 from .filepack import pack_text, TAG_RE
 from .policy import Policy
 from .scanner import scan
@@ -77,12 +80,14 @@ def _emit_json(data: Dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
-def _write_state(project_dir: str, policy_path: str, prefix: str) -> None:
+def _write_state(project_dir: str, policy_path: str, prefix: str,
+                 backup_path: str = "") -> None:
     """Write session state marker."""
     state = {
         "policy": policy_path,
         "prefix": prefix,
         "project_dir": os.path.abspath(project_dir),
+        "backup_path": backup_path,
     }
     state_path = os.path.join(project_dir, SESSION_STATE_FILE)
     with open(state_path, "w", encoding="utf-8") as f:
@@ -193,10 +198,16 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
 
     prefix = os.environ.get("CLOAK_PREFIX", DEFAULT_PREFIX)
 
+    # Check for legacy in-tree backups (security warning)
+    legacy_warn = warn_legacy_backups(project_dir)
+
     try:
         policy = Policy.load(policy_path)
-        pack_dir(project_dir, policy, prefix=prefix, backup=True)
-        _write_state(project_dir, policy_path, prefix)
+        # Create external backup (outside project tree)
+        backup_path = create_backup(project_dir, external=True)
+        # Pack without internal backup (already created externally)
+        pack_dir(project_dir, policy, prefix=prefix, backup=False)
+        _write_state(project_dir, policy_path, prefix, backup_path=backup_path)
         # R5: write session manifest (file hashes at pack time)
         ignores = load_ignores(project_dir)
         manifest = build_manifest(project_dir, ignores)
@@ -218,17 +229,19 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
         "manifest_files": manifest.get("total_files", 0),
     })
 
-    return {
-        "additionalContext": (
-            "[CloakMCP] Session started. All files have been packed — "
-            "secrets replaced by deterministic tags (TAG-xxxxxxxxxxxx). "
-            "Do NOT manually alter tag syntax. "
-            "Secrets will be restored automatically when the session ends. "
-            "IMPORTANT: Hooks protect files on disk and user prompts. "
-            "Do not embed secrets in tool arguments or filenames. "
-            "CloakMCP prevents exfiltration, not inference from context."
-        )
-    }
+    context = (
+        "[CloakMCP] Session started. All files have been packed — "
+        "secrets replaced by deterministic tags (TAG-xxxxxxxxxxxx). "
+        "Do NOT manually alter tag syntax. "
+        "Secrets will be restored automatically when the session ends. "
+        "IMPORTANT: Hooks protect files on disk and user prompts. "
+        "Do not embed secrets in tool arguments or filenames. "
+        "CloakMCP prevents exfiltration, not inference from context."
+    )
+    if legacy_warn:
+        context = legacy_warn + "\n" + context
+
+    return {"additionalContext": context}
 
 
 def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
@@ -253,6 +266,9 @@ def handle_session_end(project_dir: str = ".") -> Dict[str, Any]:
     try:
         unpack_dir(project_dir, backup=False)
         _remove_state(project_dir)
+        # Clean up external backup after successful unpack
+        if state.get("backup_path"):
+            cleanup_backup(state["backup_path"])
     except Exception as e:
         print(
             f"[CloakMCP] Unpack failed: {e}. "
@@ -545,6 +561,60 @@ def handle_safety_guard(project_dir: str = ".") -> Dict[str, Any]:
     return {}
 
 
+SENSITIVE_PATH_PATTERNS = [
+    ".cloak-backups",
+    ".cloak-session-state",
+    ".cloak-session-manifest.json",
+    ".cloak-session-audit.jsonl",
+    ".cloakmcp/",
+]
+
+
+def handle_guard_read(project_dir: str = ".") -> Dict[str, Any]:
+    """PreToolUse guard: deny Read/Grep/Glob access to sensitive paths.
+
+    Checks file_path, path, and pattern fields in tool_input for any
+    reference to backup directories or session state files.
+
+    Returns:
+        Hook response JSON (deny if sensitive path detected, empty if safe)
+    """
+    project_dir = os.path.abspath(project_dir)
+    hook_input = _read_stdin_json()
+    if hook_input is None:
+        return {}
+
+    tool_input = hook_input.get("tool_input", {})
+    paths_to_check: List[str] = []
+    for key in ("file_path", "path"):
+        val = tool_input.get(key, "")
+        if val:
+            paths_to_check.append(val)
+    pattern = tool_input.get("pattern", "")
+    if pattern:
+        paths_to_check.append(pattern)
+
+    for path_val in paths_to_check:
+        for sensitive in SENSITIVE_PATH_PATTERNS:
+            if sensitive in path_val:
+                _append_audit(project_dir, {
+                    "event": "guard_read_deny",
+                    "sensitive_pattern": sensitive,
+                    "tool_name": hook_input.get("tool_name", ""),
+                })
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            f"[CloakMCP Guard] Blocked: access to sensitive path "
+                            f"containing '{sensitive}'."
+                        ),
+                    }
+                }
+    return {}
+
+
 def handle_audit_log(project_dir: str = ".") -> Dict[str, Any]:
     """Handle PostToolUse audit logging.
 
@@ -644,6 +714,11 @@ def handle_recover(project_dir: str = ".") -> None:
     """
     project_dir = os.path.abspath(project_dir)
 
+    # Warn about legacy in-tree backups
+    legacy_warn = warn_legacy_backups(project_dir)
+    if legacy_warn:
+        print(legacy_warn, file=sys.stderr)
+
     state = _read_state(project_dir)
     if state is None:
         print("No stale session state found. Nothing to recover.", file=sys.stderr)
@@ -676,6 +751,7 @@ def dispatch_hook(event: str, project_dir: str = ".") -> None:
         "session-start": handle_session_start,
         "session-end": handle_session_end,
         "guard-write": handle_guard_write,
+        "guard-read": handle_guard_read,
         "prompt-guard": handle_prompt_guard,
         "safety-guard": handle_safety_guard,
         "audit-log": handle_audit_log,

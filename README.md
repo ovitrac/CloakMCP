@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.6.3-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-216%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.7.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-240%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -135,7 +135,7 @@ When Claude Code starts a session, CloakMCP **automatically packs** all files. W
 }
 ```
 
-The **UserPromptSubmit guard** scans every user message for secrets — blocking critical/high and warning on medium/low. The **PreToolUse guard** scans content Claude tries to write — and denies if raw secrets appear in generated code.
+The **UserPromptSubmit guard** scans every user message for secrets — blocking critical/high and warning on medium/low. The **PreToolUse guard** scans content Claude tries to write — and denies if raw secrets appear in generated code. The **hardened profile** adds a `Read|Grep|Glob` guard that blocks access to backup directories and session state files.
 
 ### 2. MCP Tool Server — 6 Tools
 
@@ -206,7 +206,7 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
 | `cloak sanitize-stdin --policy POL` | Sanitize text from stdin to stdout (pipe helper) |
 | `cloak repack --dir DIR --policy POL` | Incremental re-pack: scan new/changed files only |
 | `cloak verify --dir DIR` | Post-unpack verification: scan for residual tags |
-| `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, prompt-guard) |
+| `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, guard-read, prompt-guard, safety-guard, audit-log) |
 | `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio, any MCP client) |
 
 ---
@@ -380,8 +380,11 @@ sequenceDiagram
 ~/.cloakmcp/
 ├── keys/
 │   └── <project-slug>.key        # Fernet encryption key (AES-128, 600 perms)
-└── vaults/
-    └── <project-slug>.vault      # Encrypted JSON mapping {TAG → secret}
+├── vaults/
+│   └── <project-slug>.vault      # Encrypted JSON mapping {TAG → secret}
+└── backups/
+    └── <project-slug>/           # Pre-redaction backups (auto-cleaned on session end)
+        └── <timestamp>/          # Timestamped snapshot (outside project tree)
 ```
 
 - **Slug**: 16-character SHA-256 prefix of project's absolute path
@@ -413,8 +416,10 @@ sequenceDiagram
 |----------|-----------|-----------|
 | Session lifecycle | Yes | `SessionStart` / `SessionEnd` hooks automate pack/unpack |
 | Write/Edit tool calls | Yes | `guard-write` hook denies high-severity secrets |
+| Read/Grep/Glob access | Yes | `guard-read` hook blocks access to backups & session files (hardened) |
 | Bash commands | Yes | `safety-guard` hook blocks dangerous commands |
 | User prompts | Mitigated | `prompt-guard` hook blocks/warns (if installed) |
+| Backup exfiltration | Yes | Backups stored in `~/.cloakmcp/backups/`, outside project tree |
 | Chat after prompt | No | Prompt guard scans user input, not model responses |
 
 > **Tip:** Pipe text through `cloak sanitize-stdin --policy examples/mcp_policy.yaml` before pasting.
@@ -625,14 +630,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (214 passing)
+# Run all tests (240 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 214+ tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
+**Test suite**: 240+ tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
 
 ---
 
@@ -655,7 +660,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (214+ tests, 7 files)
+├── tests/                         # Test suite (240+ tests, 7 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
@@ -672,7 +677,7 @@ CloakMCP/
 │   └── THREAT_MODEL.md            # Threat model and security analysis
 │   └── scripts/                   # Bundled installer + hooks (included in PyPI wheel)
 │       ├── install_claude.sh      # Idempotent hook installer (--profile, --dry-run)
-│       ├── hooks/                 # Hook shell scripts (6 tracked scripts)
+│       ├── hooks/                 # Hook shell scripts (7 tracked scripts)
 │       └── settings/              # Settings templates (hooks.json, hooks-hardened.json)
 ├── demo/                          # Live demo (Spring Boot banking service)
 │   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
@@ -695,7 +700,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.6.0)
+├── pyproject.toml                 # Package metadata (v0.7.0)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -752,7 +757,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.6.0 — Enterprise policy (16 provider rules), incremental repack, tag idempotency, security hardening
+**Latest**: v0.7.0 — Backup exfiltration fix (backups moved outside project tree), guard-read hook (hardened profile), legacy backup warnings
 
 ---
 

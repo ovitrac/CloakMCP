@@ -206,7 +206,7 @@ HOOK_SCRIPTS=(
 )
 
 if [ "$PROFILE" = "hardened" ]; then
-    HOOK_SCRIPTS+=("cloak-safety-guard.sh")
+    HOOK_SCRIPTS+=("cloak-safety-guard.sh" "cloak-guard-read.sh")
 fi
 
 for script in "${HOOK_SCRIPTS[@]}"; do
@@ -267,6 +267,25 @@ os.replace(tmp, settings_file)
 "
     info "Hook settings merged into $SETTINGS_FILE"
 fi
+
+# ── Phase 4b: Ensure .cloak-backups/ exclusion ───────────────────
+
+step "Phase 4b: Ensure .cloak-backups/ exclusion"
+
+for IGNORE_FILE in "$PROJECT_DIR/.gitignore" "$PROJECT_DIR/.mcpignore"; do
+    if [ -f "$IGNORE_FILE" ]; then
+        if ! grep -qF '.cloak-backups/' "$IGNORE_FILE"; then
+            if [ "$DRY_RUN" = true ]; then
+                dry "Would add .cloak-backups/ to $(basename "$IGNORE_FILE")"
+            else
+                echo '.cloak-backups/' >> "$IGNORE_FILE"
+                info "Added .cloak-backups/ to $(basename "$IGNORE_FILE")"
+            fi
+        else
+            info ".cloak-backups/ already in $(basename "$IGNORE_FILE")"
+        fi
+    fi
+done
 
 # ── Phase 5: Verify ──────────────────────────────────────────────
 

@@ -54,6 +54,16 @@
             "timeout": 5000
           }
         ]
+      },
+      {
+        "matcher": "Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/cloak-guard-read.sh",
+            "timeout": 5000
+          }
+        ]
       }
     ],
     "PostToolUse": [

@@ -152,7 +152,8 @@ def main() -> None:
 
     s_hook = sub.add_parser("hook", help="Handle Claude Code hook events")
     s_hook.add_argument("event", choices=["session-start", "session-end", "guard-write",
-                                          "prompt-guard", "safety-guard", "audit-log"],
+                                          "guard-read", "prompt-guard", "safety-guard",
+                                          "audit-log"],
                         help="Hook event type")
     s_hook.add_argument("--dir", default=".", help="Project root directory")
 

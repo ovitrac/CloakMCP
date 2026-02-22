@@ -16,3 +16,4 @@ audit/
 keys/
 .vscode/
 .cloak-session-state
+.cloak-backups/

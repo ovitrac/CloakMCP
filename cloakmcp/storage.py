@@ -9,10 +9,12 @@ from cryptography.fernet import Fernet
 DEFAULT_HOME = os.path.join(os.path.expanduser("~"), ".cloakmcp")
 VAULTS_DIR = os.path.join(DEFAULT_HOME, "vaults")
 KEYS_DIR = os.path.join(DEFAULT_HOME, "keys")
+BACKUPS_DIR = os.path.join(DEFAULT_HOME, "backups")
 
 def _ensure_dirs() -> None:
     os.makedirs(VAULTS_DIR, exist_ok=True)
     os.makedirs(KEYS_DIR, exist_ok=True)
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
 
 def _project_slug(project_root: str) -> str:
     p = os.path.abspath(project_root)

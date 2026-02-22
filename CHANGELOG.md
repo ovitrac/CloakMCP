@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-02-22
+
+### Security
+- **Backup exfiltration fix (G6)**: pre-redaction backups moved from in-tree `.cloak-backups/`
+  to `~/.cloakmcp/backups/{slug}/` — prevents LLM tools from reading raw secrets via
+  Read/Grep/Glob during active sessions (severity: High)
+- **Guard-read hook (P3)**: new `PreToolUse` guard for Read/Grep/Glob blocks access to
+  `.cloak-backups/`, `.cloak-session-state`, `.cloak-session-manifest.json`,
+  `.cloak-session-audit.jsonl`, and `~/.cloakmcp/` (hardened profile, defense-in-depth)
+- **Legacy backup warning**: session start and recovery detect in-tree `.cloak-backups/`
+  and emit security warnings
+
+### Added
+- `create_backup(external=True)` — external backup to `~/.cloakmcp/backups/{slug}/{ts}/`
+- `cleanup_backup()` — removes timestamped backup after successful session end
+- `warn_legacy_backups()` — returns warning if legacy `.cloak-backups/` exists in project
+- `handle_guard_read()` — PreToolUse hook handler for Read/Grep/Glob sensitive paths
+- `cloak hook guard-read` CLI event + `cloak-guard-read.sh` wrapper script
+- `hooks-hardened.json`: `Read|Grep|Glob` PreToolUse entry for hardened profile
+- Installer Phase 4b: ensures `.cloak-backups/` in `.gitignore` and `.mcpignore`
+- `.cloak-backups/` added to `.gitignore` and `.mcpignore` (explicit, was only programmatic)
+- `BACKUPS_DIR` constant in `storage.py`
+- Session state marker now includes `backup_path` field
+- 28 new tests: `TestExternalBackup` (8), `TestGuardRead` (16), `TestStateMarker` updates (2)
+
+### Changed
+- `create_backup()` default changed to external storage (`external=True`)
+- `handle_session_start()` creates external backup, passes `backup=False` to `pack_dir()`
+- `handle_session_end()` cleans up external backup after successful unpack
+- `handle_recover()` warns about legacy in-tree backups
+- `__version__` synced to `0.7.0` (was stale at `0.5.0`)
+
 ## [0.6.3] - 2026-02-22
 
 ### Added
@@ -190,7 +222,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ovitrac/CloakMCP/compare/v0.6.3...v0.7.0
+[0.6.3]: https://github.com/ovitrac/CloakMCP/compare/v0.6.0...v0.6.3
 [0.6.0]: https://github.com/ovitrac/CloakMCP/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/ovitrac/CloakMCP/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ovitrac/CloakMCP/compare/v0.3.3...v0.5.0

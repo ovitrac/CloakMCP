@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .policy import Policy
-from .storage import Vault
+from .storage import Vault, BACKUPS_DIR, _project_slug
 from .filepack import TAG_RE, pack_text, unpack_text
 
 IGNORE_FILE = ".mcpignore"
@@ -40,11 +40,27 @@ def iter_files(root: str, globs: List[str]) -> Iterable[str]:
                 continue
             yield os.path.join(root, rel)
 
-def create_backup(root: str) -> str:
-    """Create a timestamped backup of files in the directory."""
+def create_backup(root: str, external: bool = True) -> str:
+    """Create a timestamped backup of files in the directory.
+
+    Args:
+        root: Project root directory
+        external: If True (default), store backup outside the project tree
+                  in ~/.cloakmcp/backups/{slug}/{timestamp}/.
+                  If False, use legacy in-tree .cloak-backups/{timestamp}/.
+
+    Returns:
+        Path to the created backup directory.
+    """
     import sys
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(root, BACKUP_DIR, timestamp)
+
+    if external:
+        slug = _project_slug(root)
+        backup_path = os.path.join(BACKUPS_DIR, slug, timestamp)
+    else:
+        backup_path = os.path.join(root, BACKUP_DIR, timestamp)
+
     os.makedirs(backup_path, exist_ok=True)
 
     ignores = load_ignores(root)
@@ -62,6 +78,24 @@ def create_backup(root: str) -> str:
 
     print(f"Backup created: {backup_path} ({files_backed_up} files)", file=sys.stderr)
     return backup_path
+
+
+def cleanup_backup(backup_path: str) -> None:
+    """Remove a timestamped backup directory after successful session end."""
+    if os.path.isdir(backup_path):
+        shutil.rmtree(backup_path, ignore_errors=True)
+
+
+def warn_legacy_backups(root: str) -> Optional[str]:
+    """Return warning string if legacy .cloak-backups/ exists in project tree."""
+    legacy_path = os.path.join(root, BACKUP_DIR)
+    if os.path.isdir(legacy_path):
+        return (
+            "[CloakMCP] WARNING: Legacy backup directory found at "
+            f"{legacy_path}. This exposes pre-redaction secrets to LLM tools. "
+            "Remove it: rm -rf .cloak-backups/"
+        )
+    return None
 
 def pack_dir(
     root: str,

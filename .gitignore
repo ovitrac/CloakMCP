@@ -192,3 +192,4 @@ codex_*
 .cloak-session-state
 .cloak-session-manifest.json
 .cloak-session-audit.jsonl
+.cloak-backups/

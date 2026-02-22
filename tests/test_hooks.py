@@ -8,9 +8,11 @@ from cloakmcp.hooks import (
     AUDIT_FILE,
     SESSION_STATE_FILE,
     SESSION_MANIFEST_FILE,
+    SENSITIVE_PATH_PATTERNS,
     handle_session_start,
     handle_session_end,
     handle_guard_write,
+    handle_guard_read,
     handle_prompt_guard,
     handle_safety_guard,
     handle_audit_log,
@@ -23,7 +25,12 @@ from cloakmcp.hooks import (
     _remove_manifest,
     _append_audit,
 )
-from cloakmcp.dirpack import verify_unpack, build_manifest, compute_delta, load_ignores, repack_dir, repack_file
+from cloakmcp.dirpack import (
+    verify_unpack, build_manifest, compute_delta, load_ignores,
+    repack_dir, repack_file, create_backup, cleanup_backup, warn_legacy_backups,
+    BACKUP_DIR,
+)
+from cloakmcp.storage import BACKUPS_DIR
 from cloakmcp.filepack import pack_text, TAG_RE
 from cloakmcp.policy import Policy
 from cloakmcp.storage import Vault
@@ -57,6 +64,20 @@ class TestStateMarker:
 
     def test_remove_missing_is_safe(self, tmp_path):
         _remove_state(str(tmp_path))  # should not raise
+
+    def test_backup_path_in_state(self, tmp_path):
+        """State marker includes backup_path field."""
+        _write_state(str(tmp_path), "pol.yaml", "TAG", backup_path="/tmp/backup/123")
+        state = _read_state(str(tmp_path))
+        assert state is not None
+        assert state["backup_path"] == "/tmp/backup/123"
+
+    def test_backup_path_defaults_empty(self, tmp_path):
+        """State marker has empty backup_path by default."""
+        _write_state(str(tmp_path), "pol.yaml", "TAG")
+        state = _read_state(str(tmp_path))
+        assert state is not None
+        assert state["backup_path"] == ""
 
 
 # ── session-start ───────────────────────────────────────────────
@@ -1364,3 +1385,265 @@ class TestRepackHookIntegration:
             repack_events = [e for e in events if e.get("event") == "repack_file"]
             assert len(repack_events) >= 1
             assert repack_events[0]["secrets_packed"] >= 1
+
+
+# ── G6: External backup ──────────────────────────────────────────
+
+
+class TestExternalBackup:
+    """Tests for G6/P1: backups stored outside project tree."""
+
+    def test_backup_created_outside_project(self, tmp_path):
+        """create_backup(external=True) writes to ~/.cloakmcp/backups/."""
+        root = str(tmp_path)
+        (tmp_path / "file.txt").write_text("content\n")
+        backup_path = create_backup(root, external=True)
+        assert BACKUPS_DIR in backup_path
+        assert os.path.isdir(backup_path)
+        # At least one file backed up
+        backed_files = []
+        for dp, _, fns in os.walk(backup_path):
+            backed_files.extend(fns)
+        assert len(backed_files) >= 1
+
+    def test_backup_not_in_project_tree(self, tmp_path):
+        """No .cloak-backups/ directory in project after external backup."""
+        root = str(tmp_path)
+        (tmp_path / "file.txt").write_text("content\n")
+        create_backup(root, external=True)
+        legacy_dir = tmp_path / BACKUP_DIR
+        assert not legacy_dir.exists()
+
+    def test_legacy_backup_creates_in_tree(self, tmp_path):
+        """create_backup(external=False) uses legacy in-tree path."""
+        root = str(tmp_path)
+        (tmp_path / "file.txt").write_text("content\n")
+        backup_path = create_backup(root, external=False)
+        assert root in backup_path
+        assert BACKUP_DIR in backup_path
+
+    def test_session_state_includes_backup_path(self, tmp_path, monkeypatch):
+        """Session start writes backup_path to state JSON."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        state = _read_state(str(tmp_path))
+        assert state is not None
+        assert "backup_path" in state
+        assert state["backup_path"] != ""
+        assert BACKUPS_DIR in state["backup_path"]
+        # Clean up
+        handle_session_end(str(tmp_path))
+
+    def test_session_end_cleans_backup(self, tmp_path, monkeypatch):
+        """External backup removed after successful unpack."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
+        handle_session_start(str(tmp_path))
+        state = _read_state(str(tmp_path))
+        backup_path = state["backup_path"]
+        assert os.path.isdir(backup_path)
+        handle_session_end(str(tmp_path))
+        assert not os.path.isdir(backup_path)
+
+    def test_legacy_backup_warning(self, tmp_path):
+        """warn_legacy_backups returns warning when .cloak-backups/ exists."""
+        legacy_dir = tmp_path / BACKUP_DIR
+        legacy_dir.mkdir()
+        result = warn_legacy_backups(str(tmp_path))
+        assert result is not None
+        assert "WARNING" in result
+        assert "Legacy backup" in result
+
+    def test_no_legacy_warning_when_clean(self, tmp_path):
+        """No warning when .cloak-backups/ does not exist."""
+        result = warn_legacy_backups(str(tmp_path))
+        assert result is None
+
+    def test_cleanup_backup_removes_timestamped_dir(self, tmp_path):
+        """cleanup_backup() removes the dir, parent stays."""
+        parent = tmp_path / "backups" / "slug"
+        parent.mkdir(parents=True)
+        ts_dir = parent / "20260222_120000"
+        ts_dir.mkdir()
+        (ts_dir / "file.txt").write_text("data")
+        cleanup_backup(str(ts_dir))
+        assert not ts_dir.exists()
+        assert parent.exists()  # parent directory preserved
+
+
+# ── G6: Guard-read ────────────────────────────────────────────────
+
+
+class TestGuardRead:
+    """Tests for G6/P3: PreToolUse guard for Read/Grep/Glob sensitive paths."""
+
+    def _hook_json(self, tool_name: str, **tool_input_fields) -> str:
+        """Build hook input JSON for Read/Grep/Glob tools."""
+        return json.dumps({
+            "tool_name": tool_name,
+            "tool_input": tool_input_fields,
+        })
+
+    # ── Deny tests ───────────────────────────────────────────────
+
+    def test_denies_read_cloak_backups(self, tmp_path, monkeypatch):
+        """Read with file_path containing .cloak-backups -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/.cloak-backups/20260101/config.py")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+        assert ".cloak-backups" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_denies_grep_cloak_backups(self, tmp_path, monkeypatch):
+        """Grep with path containing .cloak-backups -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Grep", path="/project/.cloak-backups/", pattern="sk-")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def test_denies_glob_cloak_backups(self, tmp_path, monkeypatch):
+        """Glob with path containing .cloak-backups -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Glob", path="/project/.cloak-backups/")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def test_denies_read_session_state(self, tmp_path, monkeypatch):
+        """Read .cloak-session-state -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/.cloak-session-state")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def test_denies_read_session_manifest(self, tmp_path, monkeypatch):
+        """Read .cloak-session-manifest.json -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/.cloak-session-manifest.json")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def test_denies_read_cloakmcp_dir(self, tmp_path, monkeypatch):
+        """Read into ~/.cloakmcp/ -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/home/user/.cloakmcp/vaults/abc.vault")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def test_denies_grep_session_audit(self, tmp_path, monkeypatch):
+        """Grep into .cloak-session-audit.jsonl -> deny."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Grep", path="/project/.cloak-session-audit.jsonl", pattern="secret")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    # ── Allow tests ──────────────────────────────────────────────
+
+    def test_allows_normal_file_read(self, tmp_path, monkeypatch):
+        """Normal file read -> allow (empty dict)."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/src/main.py")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    def test_allows_normal_grep(self, tmp_path, monkeypatch):
+        """Normal grep -> allow."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Grep", path="/project/src/", pattern="TODO")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    def test_allows_normal_glob(self, tmp_path, monkeypatch):
+        """Normal glob -> allow."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Glob", path="/project/", pattern="**/*.py")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    # ── Edge cases ───────────────────────────────────────────────
+
+    def test_empty_stdin(self, tmp_path, monkeypatch):
+        """Empty stdin -> empty dict."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    def test_invalid_json_stdin(self, tmp_path, monkeypatch):
+        """Invalid JSON stdin -> empty dict."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    def test_missing_path_fields(self, tmp_path, monkeypatch):
+        """No file_path/path/pattern fields -> allow."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({
+            "tool_name": "Read",
+            "tool_input": {},
+        })))
+        result = handle_guard_read(str(tmp_path))
+        assert result == {}
+
+    # ── Response shape ───────────────────────────────────────────
+
+    def test_deny_response_shape(self, tmp_path, monkeypatch):
+        """Verify deny response matches PreToolUse hook spec."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/.cloak-backups/ts/file.txt")
+        ))
+        result = handle_guard_read(str(tmp_path))
+        hso = result["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PreToolUse"
+        assert hso["permissionDecision"] == "deny"
+        assert isinstance(hso["permissionDecisionReason"], str)
+        assert "CloakMCP Guard" in hso["permissionDecisionReason"]
+
+    # ── Audit ────────────────────────────────────────────────────
+
+    def test_deny_writes_audit_event(self, tmp_path, monkeypatch):
+        """Deny writes guard_read_deny event to audit JSONL."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/.cloak-backups/ts/config.py")
+        ))
+        handle_guard_read(str(tmp_path))
+        audit_path = tmp_path / AUDIT_FILE
+        assert audit_path.exists()
+        events = [json.loads(line) for line in audit_path.read_text().strip().splitlines()]
+        deny_events = [e for e in events if e["event"] == "guard_read_deny"]
+        assert len(deny_events) == 1
+        assert deny_events[0]["sensitive_pattern"] == ".cloak-backups"
+        assert deny_events[0]["tool_name"] == "Read"
+
+    def test_allow_no_audit_event(self, tmp_path, monkeypatch):
+        """Allow does not write audit event."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(
+            self._hook_json("Read", file_path="/project/src/main.py")
+        ))
+        handle_guard_read(str(tmp_path))
+        audit_path = tmp_path / AUDIT_FILE
+        assert not audit_path.exists()
