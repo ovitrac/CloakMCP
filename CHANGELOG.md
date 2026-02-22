@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-02-22
+
+### Added
+- **PyPI distribution**: first release on PyPI (`pip install cloakmcp`)
+- **`cloak scripts-path`** CLI subcommand: prints the path to bundled installer scripts
+  (works from both `pip install` and git clone)
+- **GitHub Actions workflow** (`.github/workflows/publish.yml`): automated test (Python
+  3.10–3.13) → build → publish via OIDC Trusted Publisher on tagged releases
+- **PyPI badge** in README (dynamic, auto-updates with each release)
+
+### Changed
+- **Scripts bundled in wheel**: `scripts/` moved to `cloakmcp/scripts/` with
+  `[tool.setuptools.package-data]` — hook installer, 6 hook shells, and 2 settings
+  templates are now included in the PyPI distribution
+- **`install_claude.sh`**: `PROJECT_DIR` uses `pwd` instead of `SCRIPT_DIR/..` — works
+  correctly when invoked from pip-installed location
+- **`pyproject.toml`**: added `[project.urls]` (Homepage, Repository, Issues, Changelog)
+- All documentation updated to use `bash "$(cloak scripts-path)/install_claude.sh"`
+
+### Documentation
+- **`docs/QUICKSTART.md`** (new): first-time setup guide with compatibility matrix (Claude
+  Code, VS Code, Claude Web, other LLMs, CI/CD), FAQ, and troubleshooting
+- **`docs/QUICKREF.md`**: rewritten for v0.6.x — all 17 CLI commands, hooks lifecycle,
+  env vars, severity levels, MCP tools, vault management
+- Root cleanup: 5 developer docs moved to `docs/`, 12 historical artifacts archived,
+  `.backups/` removed from git tracking, `CLAUDE.md` removed from tracking
+- README project structure tree updated to reflect actual layout
+
 ## [0.6.0] - 2026-02-21
 
 ### Added
