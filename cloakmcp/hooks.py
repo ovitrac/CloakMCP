@@ -258,16 +258,33 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
     project_dir = os.path.abspath(project_dir)
 
     # Check for stale session state (abnormal previous exit)
+    _stale_recovered = False
     existing_state = _read_state(project_dir)
     if existing_state is not None:
-        # Already packed — skip re-packing, warn user
-        return {
-            "additionalContext": (
-                "[CloakMCP] WARNING: Stale session state detected. "
-                "Files may already be packed from a previous session. "
-                "Run `cloak recover --dir .` if secrets need restoring."
-            )
-        }
+        # Auto-recover: unpack stale session, then re-pack fresh
+        try:
+            unpack_dir(project_dir, backup=False)
+            _remove_state(project_dir)
+            _remove_manifest(project_dir)
+            # Clean up stale backup if it exists
+            if existing_state.get("backup_path"):
+                cleanup_backup(existing_state["backup_path"])
+            _append_audit(project_dir, {
+                "event": "session_auto_recover",
+                "stale_policy": existing_state.get("policy", ""),
+                "stale_backup": existing_state.get("backup_path", ""),
+            })
+            _stale_recovered = True
+        except Exception as e:
+            # Recovery failed — MUST surface this to user
+            return {
+                "error": (
+                    f"[CloakMCP] CRITICAL: Stale session state detected and "
+                    f"auto-recovery failed: {e}. "
+                    f"Run `cloak recover --dir .` manually before proceeding."
+                )
+            }
+        # Fall through to normal pack flow below
 
     # Find policy (G1: resolve once, pin for session)
     try:
@@ -345,6 +362,8 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
         "Do not embed secrets in tool arguments or filenames. "
         "CloakMCP prevents exfiltration, not inference from context."
     )
+    if _stale_recovered:
+        context += " (auto-recovered from stale session)"
     if legacy_warn:
         context = legacy_warn + "\n" + context
 

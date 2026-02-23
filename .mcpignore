@@ -17,3 +17,6 @@ keys/
 .vscode/
 .cloak-session-state
 .cloak-backups/
+
+# Test files contain intentional secrets for validation — must not be packed
+tests/

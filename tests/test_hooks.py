@@ -107,14 +107,95 @@ class TestSessionStart:
         content = secret_file.read_text()
         assert "alice@example.org" not in content
 
-    def test_stale_state_warns(self, tmp_path, monkeypatch):
+    def test_stale_state_auto_recovers_and_packs(self, tmp_path, monkeypatch):
+        """T1: Stale state triggers auto-recover (unpack) then fresh pack."""
         monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+
+        # Simulate stale session: write a packed file + state marker
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("Email: user@example.com\n")
+        # Pack first to get tags in the file
+        from cloakmcp.dirpack import pack_dir
+        policy = Policy.load(POLICY_PATH)
+        pack_dir(str(tmp_path), policy, prefix="TAG", backup=False)
+        packed_content = secret_file.read_text()
+        assert "TAG-" in packed_content  # file is packed
+        _write_state(str(tmp_path), POLICY_PATH, "TAG")
+
+        # Now start a new session — should auto-recover + re-pack
+        result = handle_session_start(str(tmp_path))
+
+        assert "additionalContext" in result
+        assert "Guard ACTIVE" in result["additionalContext"]
+        assert "auto-recovered from stale session" in result["additionalContext"]
+        # State marker should exist (fresh session)
+        assert _read_state(str(tmp_path)) is not None
+        # File should be packed (tags present)
+        assert "TAG-" in secret_file.read_text()
+
+    def test_stale_state_already_unpacked_recovers_cleanly(self, tmp_path, monkeypatch):
+        """T3: Stale state with already-unpacked files recovers cleanly."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+
+        # Files are already unpacked but state marker was left behind
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("Email: user@example.com\n")
         _write_state(str(tmp_path), POLICY_PATH, "TAG")
 
         result = handle_session_start(str(tmp_path))
 
         assert "additionalContext" in result
-        assert "Stale session state" in result["additionalContext"]
+        assert "Guard ACTIVE" in result["additionalContext"]
+        assert "auto-recovered from stale session" in result["additionalContext"]
+
+    def test_stale_state_recovery_failure_returns_error(self, tmp_path, monkeypatch):
+        """T2: If auto-recovery fails, return error (not exit 0)."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+
+        # Create stale state
+        _write_state(str(tmp_path), POLICY_PATH, "TAG")
+
+        # Monkey-patch unpack_dir to raise
+        import cloakmcp.hooks as hooks_mod
+        original_unpack = hooks_mod.unpack_dir
+
+        def failing_unpack(*args, **kwargs):
+            raise RuntimeError("Vault corrupted")
+
+        monkeypatch.setattr(hooks_mod, "unpack_dir", failing_unpack)
+
+        result = handle_session_start(str(tmp_path))
+
+        assert "error" in result
+        assert "CRITICAL" in result["error"]
+        assert "auto-recovery failed" in result["error"]
+
+    def test_normal_session_no_stale_state(self, tmp_path, monkeypatch):
+        """T4: Normal session (no stale state) — behavior unchanged."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("Email: user@example.com\n")
+
+        result = handle_session_start(str(tmp_path))
+
+        assert "additionalContext" in result
+        assert "Guard ACTIVE" in result["additionalContext"]
+        assert "auto-recovered" not in result["additionalContext"]
+
+    def test_stale_recovery_logs_audit_event(self, tmp_path, monkeypatch):
+        """Auto-recovery logs session_auto_recover audit event."""
+        monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("Email: user@example.com\n")
+        _write_state(str(tmp_path), POLICY_PATH, "TAG")
+
+        handle_session_start(str(tmp_path))
+
+        # Check audit log for auto-recover event
+        events = _read_audit_tail(str(tmp_path), n=20)
+        recover_events = [e for e in events if e.get("event") == "session_auto_recover"]
+        assert len(recover_events) == 1
+        assert recover_events[0]["stale_policy"] == POLICY_PATH
 
     def test_missing_policy_warns(self, tmp_path, monkeypatch):
         monkeypatch.delenv("CLOAK_POLICY", raising=False)

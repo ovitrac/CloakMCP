@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-02-23
+
+### Fixed
+- **Stale session auto-recovery**: `handle_session_start()` now auto-recovers from stale
+  session state (crash, Ctrl+C, network drop) instead of silently skipping pack with exit 0.
+  Previous behavior left secrets exposed with no visible warning. New behavior: unpack stale
+  session → re-pack fresh → append "(auto-recovered from stale session)" to banner
+- **`tests/` excluded from `.mcpignore`**: test files containing intentional secrets for
+  validation are no longer packed by session hooks
+
+### Added
+- `session_auto_recover` audit event logged on stale session recovery
+- 5 new tests: T1 (stale → auto-recover + pack), T2 (recovery failure → error),
+  T3 (stale + already unpacked → clean), T4 (no stale → unchanged), audit event
+
 ## [0.9.0] - 2026-02-23
 
 ### Security
@@ -297,7 +312,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...v0.8.0

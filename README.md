@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.9.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-278%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.9.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-282%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -662,14 +662,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (278 passing)
+# Run all tests (282 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 278 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
+**Test suite**: 282 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
 
 ---
 
@@ -693,7 +693,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (278 tests, 7 files)
+├── tests/                         # Test suite (282 tests, 7 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
@@ -733,7 +733,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.9.0)
+├── pyproject.toml                 # Package metadata (v0.9.1)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -790,7 +790,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.9.0 — `cloak policy use` (secure runtime policy management), policy pinning (G1), MCP isolation (G5), fail-closed mode (G3), downgrade protection (G4)
+**Latest**: v0.9.1 — stale session auto-recovery fix (v0.9.0: secure runtime policy management, G1-G5)
 
 ---
 
