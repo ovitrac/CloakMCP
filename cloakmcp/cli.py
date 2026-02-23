@@ -223,6 +223,23 @@ def main() -> None:
     s_policy_show.add_argument("--policy", required=True, help="Policy file to show")
     s_policy_show.add_argument("--format", choices=["yaml", "json"], default="yaml", help="Output format")
 
+    # ── v0.9.0: policy use / policy reload ──────────────────
+    s_policy_use = policy_sub.add_parser("use", help="Set per-project policy (.cloak/policy.yaml)")
+    s_policy_use.add_argument("path", nargs="?", default=None,
+                              help="Path to policy file to use")
+    s_policy_use.add_argument("--show", action="store_true", dest="show_active",
+                              help="Show active policy path, sha256, and rule count")
+    s_policy_use.add_argument("--clear", action="store_true",
+                              help="Remove per-project policy (.cloak/policy.yaml)")
+    s_policy_use.add_argument("--link", action="store_true",
+                              help="Symlink instead of copy")
+    s_policy_use.add_argument("--force", action="store_true",
+                              help="Allow policy downgrade (fewer rules / lower severity)")
+    s_policy_use.add_argument("--dir", default=".", help="Project root directory")
+
+    s_policy_reload = policy_sub.add_parser("reload", help="Reload policy mid-session (G2)")
+    s_policy_reload.add_argument("--dir", default=".", help="Project root directory")
+
     # ── v0.4.0: File-level pack/unpack ──────────────────────────
 
     s_pack_file = sub.add_parser("pack-file", help="Pack a single file: replace secrets by tags")
@@ -383,8 +400,10 @@ def main() -> None:
         return
 
     if args.cmd == "policy":
-        from .policy import validate_policy, policy_to_yaml
+        from .policy import (validate_policy, policy_to_yaml, resolve_policy,
+                             find_policy, policy_sha256, compare_policies)
         import json
+        import shutil
 
         if args.policy_cmd == "validate":
             _validate_policy_path(args.policy)
@@ -414,6 +433,108 @@ def main() -> None:
                 data = _policy_to_dict(policy)
                 data.pop("_inherits_from", None)  # Remove internal field
                 print(json.dumps(data, indent=2))
+            return
+
+        elif args.policy_cmd == "use":
+            project_dir = os.path.abspath(args.dir)
+            cloak_dir = os.path.join(project_dir, ".cloak")
+            target = os.path.join(cloak_dir, "policy.yaml")
+
+            # --show: display active policy info
+            if getattr(args, "show_active", False):
+                try:
+                    path = resolve_policy(project_dir=project_dir)
+                    h = policy_sha256(path)
+                    pol = Policy.load(path)
+                    print(f"Active policy: {path}", file=sys.stderr)
+                    print(f"  Rules: {len(pol.rules)}", file=sys.stderr)
+                    print(f"  SHA-256: {h}", file=sys.stderr)
+                    if len(pol._inherits_from) > 1:
+                        print(f"  Inheritance chain:", file=sys.stderr)
+                        for i, p in enumerate(pol._inherits_from, 1):
+                            print(f"    {i}. {p}", file=sys.stderr)
+                except FileNotFoundError:
+                    print("No active policy found.", file=sys.stderr)
+                    sys.exit(1)
+                return
+
+            # --clear: remove per-project policy
+            if getattr(args, "clear", False):
+                if os.path.exists(target):
+                    os.remove(target)
+                    print(f"Removed: {target}", file=sys.stderr)
+                else:
+                    print("No per-project policy to remove.", file=sys.stderr)
+                return
+
+            # policy use <path>: set per-project policy
+            if args.path is None:
+                print("Error: provide a policy path, --show, or --clear.",
+                      file=sys.stderr)
+                sys.exit(1)
+
+            source = os.path.abspath(args.path)
+            if not os.path.isfile(source):
+                print(f"Error: policy file not found: {args.path}",
+                      file=sys.stderr)
+                sys.exit(1)
+
+            # Validate source loads correctly
+            try:
+                new_policy = Policy.load(source)
+            except Exception as e:
+                print(f"Error: invalid policy file: {e}", file=sys.stderr)
+                sys.exit(1)
+
+            # G4: Downgrade detection
+            if os.path.isfile(target):
+                try:
+                    diff = compare_policies(target, source)
+                    if diff["is_downgrade"]:
+                        print("[CloakMCP] WARNING: Policy downgrade detected!",
+                              file=sys.stderr)
+                        print(f"  Old: {diff['old_rules']} rules, "
+                              f"New: {diff['new_rules']} rules",
+                              file=sys.stderr)
+                        if diff["removed_rules"]:
+                            print(f"  Removed rules: {', '.join(diff['removed_rules'])}",
+                                  file=sys.stderr)
+                        if diff["severity_changes"]:
+                            for sc in diff["severity_changes"]:
+                                print(f"  Severity lowered: {sc['rule_id']} "
+                                      f"({sc['old_severity']} -> {sc['new_severity']})",
+                                      file=sys.stderr)
+                        if not getattr(args, "force", False):
+                            print("  Use --force to proceed with downgrade.",
+                                  file=sys.stderr)
+                            sys.exit(1)
+                        print("  --force: proceeding with downgrade.",
+                              file=sys.stderr)
+                except Exception:
+                    pass  # Skip downgrade check on comparison error
+
+            # Create .cloak/ directory
+            os.makedirs(cloak_dir, exist_ok=True)
+
+            # Copy or symlink
+            if getattr(args, "link", False):
+                if os.path.exists(target):
+                    os.remove(target)
+                os.symlink(source, target)
+                print(f"Linked: {source} -> {target}", file=sys.stderr)
+            else:
+                shutil.copy2(source, target)
+                print(f"Copied: {source} -> {target}", file=sys.stderr)
+
+            h = policy_sha256(target)
+            print(f"  Rules: {len(new_policy.rules)}", file=sys.stderr)
+            print(f"  SHA-256: {h}", file=sys.stderr)
+            return
+
+        elif args.policy_cmd == "reload":
+            from .hooks import handle_policy_reload
+            _validate_dir_path(args.dir, "directory")
+            handle_policy_reload(project_dir=args.dir)
             return
 
     # ── v0.4.0 commands ─────────────────────────────────────────

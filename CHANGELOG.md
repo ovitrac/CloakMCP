@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-02-23
+
+### Security
+- **Policy pinning per session (G1)**: SessionStart resolves policy once, stores path + SHA-256
+  in session state; all hook handlers use the pinned policy path, never caller input
+- **MCP server isolation (G5)**: Removed `policy_path` parameter from all 6 MCP tool definitions
+  in both FastMCP and raw JSON-RPC servers; policy pinned at server startup
+- **Policy downgrade protection (G4)**: `cloak policy use` detects when the new policy has fewer
+  rules or lowered severity; requires `--force` to proceed with downgrade
+- **Fail-closed mode (G3)**: `CLOAK_FAIL_CLOSED=1` causes SessionStart to refuse unprotected
+  sessions and guard-write to deny all writes when no policy is found
+
+### Added
+- **`cloak policy use <path>`**: set per-project policy (copies to `.cloak/policy.yaml`)
+  - `--show`: display active policy path, SHA-256, and rule count
+  - `--clear`: remove per-project policy
+  - `--link`: symlink instead of copy
+  - `--force`: allow policy downgrade (G4)
+- **`cloak policy reload`**: re-resolve and update pinned policy mid-session (G2), prints
+  old→new diff, logs `policy_reload` audit event
+- **`resolve_policy()`** in `policy.py`: single source-of-truth resolver with 4-level chain
+  (explicit → CLOAK_POLICY env → `.cloak/policy.yaml` → `examples/` fallback)
+- **`find_policy()`**: non-raising wrapper (fail-open default, fail-closed with env)
+- **`policy_sha256()`**: SHA-256 hash for policy pinning and comparison
+- **`compare_policies()`**: downgrade detection (fewer rules / lowered severity)
+- **SessionStart banner (G3)**: `Guard ACTIVE: policy=<path> (N rules, sha256=…)` or
+  `Guard INACTIVE: no policy found`
+- **`--policy` flag** in `install_claude.sh`: anchors policy at install time via Phase 4c
+- **`--allow-policy-override`** flag on FastMCP server (default off, backwards compat)
+- New `CLOAK_FAIL_CLOSED` environment variable
+- Policy configuration section in `SECURITY.md` (10 subsections)
+
+### Changed
+- **Policy resolution unified**: 3 duplicate resolvers (hooks.py, fastmcp_server.py, mcp_server.py)
+  replaced by shared `resolve_policy()` / `find_policy()` from `policy.py`
+- Session state marker now includes `policy_path`, `policy_sha256`, `policy_rule_count` fields
+- Guard-write, prompt-guard, and repack hooks read pinned policy from session state (G1)
+- `.cloak/` added to `.gitignore`
+
 ## [0.8.1] - 2026-02-23
 
 ### Added
@@ -258,7 +297,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ovitrac/CloakMCP/compare/v0.6.3...v0.7.0

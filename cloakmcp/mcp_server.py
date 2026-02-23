@@ -3,6 +3,9 @@
 Exposes CloakMCP operations as MCP tools for Claude Code integration.
 No external SDK dependency — implements the MCP protocol directly.
 
+Security (G5): Tools do NOT accept policy_path from the LLM.
+Policy is resolved at server startup and pinned for all tool calls.
+
 Usage:
     cloak-mcp-server          # launched by Claude Code via .mcp.json
     python -m cloakmcp.mcp_server  # manual testing
@@ -15,8 +18,23 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
+from .policy import resolve_policy
 
-# ── Tool definitions ────────────────────────────────────────────
+
+# ── G5: Pin policy at module load ─────────────────────────────────
+
+_PINNED_POLICY: Optional[str] = None
+
+
+def _get_pinned_policy() -> str:
+    """Return the pinned policy path, resolving on first call."""
+    global _PINNED_POLICY
+    if _PINNED_POLICY is None:
+        _PINNED_POLICY = resolve_policy()
+    return _PINNED_POLICY
+
+
+# ── Tool definitions (G5: no policy_path parameter) ───────────────
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -29,10 +47,6 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "text": {"type": "string", "description": "Text to scan for secrets"},
-                "policy_path": {
-                    "type": "string",
-                    "description": "Path to YAML policy file (optional, uses CLOAK_POLICY env or default)",
-                },
             },
             "required": ["text"],
         },
@@ -47,7 +61,6 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "text": {"type": "string", "description": "Text containing secrets to pack"},
-                "policy_path": {"type": "string", "description": "Path to YAML policy file (optional)"},
                 "prefix": {"type": "string", "description": "Tag prefix (default: TAG)", "default": "TAG"},
                 "project_root": {"type": "string", "description": "Project root for vault (default: .)"},
             },
@@ -90,7 +103,6 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "dir": {"type": "string", "description": "Directory to pack"},
-                "policy_path": {"type": "string", "description": "Path to YAML policy file (optional)"},
                 "prefix": {"type": "string", "description": "Tag prefix (default: TAG)", "default": "TAG"},
             },
             "required": ["dir"],
@@ -148,26 +160,7 @@ def _log(message: str) -> None:
     print(f"[cloakmcp] {message}", file=sys.stderr, flush=True)
 
 
-# ── Policy resolution ──────────────────────────────────────────
-
-def _resolve_policy_path(explicit: Optional[str] = None) -> str:
-    """Resolve policy path from explicit arg, env, or default."""
-    if explicit:
-        if os.path.isfile(explicit):
-            return explicit
-        raise FileNotFoundError(f"Policy file not found: {explicit}")
-    env = os.environ.get("CLOAK_POLICY")
-    if env and os.path.isfile(env):
-        return env
-    default = "examples/mcp_policy.yaml"
-    if os.path.isfile(default):
-        return default
-    raise FileNotFoundError(
-        "No policy file found. Set CLOAK_POLICY env or pass policy_path."
-    )
-
-
-# ── Tool handlers ──────────────────────────────────────────────
+# ── Tool handlers (G5: use pinned policy) ─────────────────────────
 
 def _handle_cloak_scan_text(args: Dict[str, Any]) -> Dict[str, Any]:
     from .policy import Policy
@@ -175,8 +168,7 @@ def _handle_cloak_scan_text(args: Dict[str, Any]) -> Dict[str, Any]:
     from .normalizer import normalize
 
     text = args["text"]
-    policy_path = _resolve_policy_path(args.get("policy_path"))
-    policy = Policy.load(policy_path)
+    policy = Policy.load(_get_pinned_policy())
     norm = normalize(text)
     matches = scan(norm, policy)
 
@@ -202,11 +194,10 @@ def _handle_cloak_pack_text(args: Dict[str, Any]) -> Dict[str, Any]:
     from .storage import Vault
 
     text = args["text"]
-    policy_path = _resolve_policy_path(args.get("policy_path"))
     prefix = args.get("prefix", "TAG")
     project_root = args.get("project_root", ".")
 
-    policy = Policy.load(policy_path)
+    policy = Policy.load(_get_pinned_policy())
     vault = Vault(project_root)
     packed, count = pack_text(text, policy, vault, prefix=prefix)
 
@@ -245,13 +236,12 @@ def _handle_cloak_pack_dir(args: Dict[str, Any]) -> Dict[str, Any]:
     from .policy import Policy
 
     dir_path = args["dir"]
-    policy_path = _resolve_policy_path(args.get("policy_path"))
     prefix = args.get("prefix", "TAG")
 
     if not os.path.isdir(dir_path):
         raise ValueError(f"Directory not found: {dir_path}")
 
-    policy = Policy.load(policy_path)
+    policy = Policy.load(_get_pinned_policy())
     # Pack with no backup (MCP context — hooks handle backups)
     pack_dir(dir_path, policy, prefix=prefix, backup=False)
 
@@ -337,7 +327,8 @@ def _handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def run_server() -> None:
     """Run the MCP stdio server (blocking main loop)."""
-    _log("Starting CloakMCP MCP server (stdio)")
+    policy = _get_pinned_policy()
+    _log(f"Starting CloakMCP MCP server (stdio), policy={policy}")
 
     for line in sys.stdin:
         line = line.strip()

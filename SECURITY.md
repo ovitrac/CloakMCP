@@ -115,6 +115,110 @@ CloakMCP's threat model covers **exfiltration**, not **inference**. The distinct
 | Secret embedded in filenames | **Not covered** | File named `aws_AKIAEXAMPLE.conf` |
 | Secret in tool arguments | **Not covered** | Secret passed as CLI argument |
 
+## Policy configuration
+
+### Resolution chain
+
+CloakMCP uses a prioritized resolution chain to find the active policy:
+
+| Priority | Source | Who sets it |
+|----------|--------|-------------|
+| 1 | Explicit `--policy` CLI flag | Operator (command line) |
+| 2 | `CLOAK_POLICY` environment variable | Operator (shell/CI) |
+| 3 | `.cloak/policy.yaml` (per-project) | Operator (`cloak policy use`) |
+| 4 | `examples/mcp_policy.yaml` (development fallback) | Repository default |
+| 5 | Fail: error or empty (see fail-closed mode) | — |
+
+### Policy pinning (G1)
+
+At `SessionStart`, the hook resolves the policy **once** and pins the path + SHA-256 hash in the session state marker. All subsequent hook handlers (guard-write, prompt-guard, audit-log) use the **pinned policy path**, ignoring any incoming suggestions. This prevents policy drift during a session.
+
+### Choosing a policy
+
+| Profile | File | Rules | Coverage |
+|---------|------|-------|----------|
+| Default | `mcp_policy.yaml` | 10 | AWS, GCP, SSH, PEM, JWT, email, IP, URL, entropy |
+| Enterprise | `mcp_policy_enterprise.yaml` | 26 | Default + GitHub, GitLab, Slack, Stripe, npm, etc. |
+| Custom | Your own YAML | N | Inherit from default or enterprise, add project rules |
+
+### Setting the policy
+
+```bash
+# Per-project (recommended for pip-installed CloakMCP):
+cloak policy use examples/mcp_policy.yaml         # copy to .cloak/policy.yaml
+cloak policy use --link examples/mcp_policy.yaml   # symlink
+cloak policy use --show                            # view active policy + hash
+cloak policy use --clear                           # remove per-project policy
+
+# Via environment:
+export CLOAK_POLICY=/path/to/policy.yaml
+
+# Via installer:
+bash "$(cloak scripts-path)/install_claude.sh" --policy examples/mcp_policy.yaml
+
+# MCP server (auto-discovers .cloak/policy.yaml):
+cloak serve
+```
+
+### Fail-closed mode (G3)
+
+By default, CloakMCP fails open: if no policy is found, guards are inactive and the session proceeds unprotected (with a visible banner). For regulated environments:
+
+```bash
+export CLOAK_FAIL_CLOSED=1
+```
+
+With `CLOAK_FAIL_CLOSED=1`:
+- `SessionStart` refuses to start without a policy
+- Guard-write denies all writes if no policy is available
+- The `find_policy()` resolver raises instead of returning empty
+
+### Downgrade protection (G4)
+
+When running `cloak policy use <new-policy>` and a `.cloak/policy.yaml` already exists:
+1. Both policies are loaded and compared
+2. A **downgrade** is detected if the new policy has fewer rules or any rule's severity is lowered
+3. If downgrade detected: warning printed, `--force` required to proceed
+4. A `policy_downgrade` audit event is logged
+
+### MCP server isolation (G5)
+
+The 6 MCP tools (`cloak_scan_text`, `cloak_pack_text`, etc.) do **not** accept a `policy_path` parameter. The policy is resolved and pinned at server startup. This prevents a compromised prompt from downgrading protection by requesting a permissive policy.
+
+The `--allow-policy-override` flag (default off) restores the old behavior for controlled environments that need per-call policy selection.
+
+### Mid-session policy changes (G2)
+
+By default, policy changes take effect at the **next session**. To apply a change mid-session:
+
+```bash
+cloak policy reload --dir .
+```
+
+This re-resolves the policy, updates the pinned hash in session state, prints the old → new diff, and logs a `policy_reload` audit event.
+
+### Third-party integration
+
+When CloakMCP is pip-installed into another project (e.g., a toolbox), the development fallback (`examples/mcp_policy.yaml`) does not exist. Projects must anchor a policy:
+
+```bash
+cloak policy use "$(python3 -c "
+import cloakmcp, os
+print(os.path.join(os.path.dirname(cloakmcp.__file__),
+      '..', 'examples', 'mcp_policy.yaml'))
+")"
+```
+
+Or ship a custom policy and use `cloak policy use <custom-policy.yaml>`.
+
+### Visibility (G3)
+
+The `SessionStart` banner always reports the policy state:
+- **ACTIVE**: `Guard ACTIVE: policy=<path> (N rules, sha256=<hash>)`
+- **INACTIVE**: `Guard INACTIVE: no policy found (writes not protected)`
+
+Use `cloak policy use --show` at any time to verify the active policy.
+
 ## Operating recommendations
 - Keep `keys/` outside version control, strict permissions.
 - Tune your policy before use; prefer `block`/`redact` for new detectors.

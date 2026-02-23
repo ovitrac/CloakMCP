@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.8.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.9.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-278%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -158,11 +158,13 @@ CloakMCP exposes tools via the **Model Context Protocol**. The recommended appro
     "cloakmcp": {
       "type": "stdio",
       "command": "cloak",
-      "args": ["serve", "--policy", "examples/mcp_policy.yaml"]
+      "args": ["serve"]
     }
   }
 }
 ```
+
+> **Note:** `cloak serve` auto-discovers `.cloak/policy.yaml` (set via `cloak policy use`). You can also pass `--policy <path>` explicitly.
 
 **Network transport** (SSE on port 8766):
 
@@ -212,6 +214,8 @@ cloak serve --transport sse --port 8766
 | `cloak unpack --dir DIR` | Restore original secrets from local vault |
 | `cloak policy validate --policy POL` | Validate policy file (including inheritance chain) |
 | `cloak policy show --policy POL` | Show merged policy after inheritance resolution |
+| `cloak policy use <path>` | Set per-project policy (copies to `.cloak/policy.yaml`); `--show`, `--clear`, `--link`, `--force` |
+| `cloak policy reload` | Reload policy mid-session (G2): re-resolve, update pinned hash, print diff |
 | `cloak sanitize-stdin --policy POL` | Sanitize text from stdin to stdout (pipe helper) |
 | `cloak repack --dir DIR --policy POL` | Incremental re-pack: scan new/changed files only |
 | `cloak verify --dir DIR` | Post-unpack verification: scan for residual tags |
@@ -303,7 +307,17 @@ openssl rand -hex 32 > keys/mcp_hmac_key
 chmod 600 keys/*
 ```
 
-### 3. Pack / Unpack (Works with Any LLM)
+### 3. Set Policy (Recommended)
+
+```bash
+# Set per-project policy (persists in .cloak/policy.yaml)
+cloak policy use examples/mcp_policy.yaml
+
+# Verify
+cloak policy use --show
+```
+
+### 4. Pack / Unpack (Works with Any LLM)
 
 ```bash
 # Pack: replace secrets with tags (vaulted, reversible)
@@ -316,7 +330,7 @@ cloak pack --policy examples/mcp_policy.yaml --dir . --prefix TAG
 cloak unpack --dir .
 ```
 
-### 4. Claude Code Setup (Optional)
+### 5. Claude Code Setup (Optional)
 
 If you use Claude Code, the pack/unpack cycle is fully automated via hooks:
 
@@ -577,6 +591,7 @@ keys/
 | `CLOAK_PROMPT_GUARD` | *(enabled)* | Set to `off` to disable the UserPromptSubmit hook entirely |
 | `CLOAK_AUDIT_TOOLS` | *(unset)* | Set to `1` to enable Tier 2 tool metadata logging (hashed file paths) |
 | `CLOAK_REPACK_ON_WRITE` | *(unset)* | Set to `1` to auto-repack files after Write/Edit tool calls. Adds latency per write. |
+| `CLOAK_FAIL_CLOSED` | *(unset)* | Set to `1` to deny writes and refuse sessions when no policy is found (recommended for regulated environments) |
 
 ---
 
@@ -647,14 +662,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (277 passing)
+# Run all tests (278 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 277 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
+**Test suite**: 278 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
 
 ---
 
@@ -678,7 +693,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (277 tests, 7 files)
+├── tests/                         # Test suite (278 tests, 7 files)
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
@@ -718,7 +733,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.8.1)
+├── pyproject.toml                 # Package metadata (v0.9.0)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -775,7 +790,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.8.1 — `cloak serve` (FastMCP), JWT regex fix, `cloak status`, `cloak restore`, `cloak --version`
+**Latest**: v0.9.0 — `cloak policy use` (secure runtime policy management), policy pinning (G1), MCP isolation (G5), fail-closed mode (G3), downgrade protection (G4)
 
 ---
 

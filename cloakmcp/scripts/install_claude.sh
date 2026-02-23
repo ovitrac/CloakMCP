@@ -7,6 +7,7 @@
 # Options:
 #   --profile secrets-only|hardened   Hook profile (default: secrets-only)
 #   --method  copy|symlink            Install method (default: copy)
+#   --policy  <path>                  Set per-project policy via cloak policy use
 #   --dry-run                         Show planned actions without changes
 #   --uninstall                       Remove installed hooks
 #   --help                            Show this help
@@ -23,6 +24,7 @@ set -euo pipefail
 
 PROFILE="secrets-only"
 METHOD="copy"
+POLICY_PATH=""
 DRY_RUN=false
 UNINSTALL=false
 
@@ -69,6 +71,13 @@ while [[ $# -gt 0 ]]; do
             METHOD="$2"
             if [[ "$METHOD" != "copy" && "$METHOD" != "symlink" ]]; then
                 error "Unknown method: $METHOD (expected: copy, symlink)"
+                exit 1
+            fi
+            shift 2 ;;
+        --policy)
+            POLICY_PATH="$2"
+            if [ ! -f "$POLICY_PATH" ]; then
+                error "Policy file not found: $POLICY_PATH"
                 exit 1
             fi
             shift 2 ;;
@@ -287,6 +296,18 @@ for IGNORE_FILE in "$PROJECT_DIR/.gitignore" "$PROJECT_DIR/.mcpignore"; do
     fi
 done
 
+# ── Phase 4c: Set per-project policy (optional) ──────────────────
+
+if [ -n "$POLICY_PATH" ]; then
+    step "Phase 4c: Set per-project policy"
+    if [ "$DRY_RUN" = true ]; then
+        dry "Would run: cloak policy use \"$POLICY_PATH\""
+    else
+        cloak policy use "$POLICY_PATH" --dir "$PROJECT_DIR"
+        info "Per-project policy set: $POLICY_PATH"
+    fi
+fi
+
 # ── Phase 5: Verify ──────────────────────────────────────────────
 
 step "Phase 5: Verify installation"
@@ -363,8 +384,12 @@ else
     echo "    - Post tool use: audit events logged to .cloak-session-audit.jsonl"
     echo "    - Session end: files are unpacked (tags -> secrets restored)"
     echo ""
+    if [ -n "$POLICY_PATH" ]; then
+        echo "  Policy: $POLICY_PATH"
+    fi
+    echo ""
     echo "  Environment variables (optional):"
-    echo "    CLOAK_POLICY       path to policy YAML (default: examples/mcp_policy.yaml)"
+    echo "    CLOAK_POLICY       path to policy YAML (fallback if no .cloak/policy.yaml)"
     echo "    CLOAK_PREFIX        tag prefix (default: TAG)"
     echo "    CLOAK_AUDIT_TOOLS   set to 1 for full tool metadata logging"
     echo ""

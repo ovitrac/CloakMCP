@@ -24,7 +24,7 @@ from .dirpack import (
     restore_from_backup,
 )
 from .filepack import pack_text, TAG_RE
-from .policy import Policy
+from .policy import Policy, find_policy, policy_sha256
 from .scanner import scan
 from .normalizer import normalize
 from .storage import Vault, BACKUPS_DIR, _project_slug
@@ -53,14 +53,24 @@ DANGEROUS_PATTERNS: List[Tuple[str, str]] = [
 ]
 
 
-def _find_policy() -> str:
-    """Find the policy file — check env, then default location."""
-    env = os.environ.get("CLOAK_POLICY")
-    if env and os.path.isfile(env):
-        return env
-    if os.path.isfile(DEFAULT_POLICY):
-        return DEFAULT_POLICY
-    return ""
+def _pinned_policy(project_dir: str) -> str:
+    """Get pinned policy from session state, falling back to find_policy().
+
+    G1: During an active session, always use the pinned policy path from
+    session state. This prevents policy drift from caller input.
+
+    Args:
+        project_dir: Project root directory (absolute)
+
+    Returns:
+        Policy path (absolute) or "" if no policy available.
+    """
+    state = _read_state(project_dir)
+    if state and state.get("policy_path"):
+        pinned = state["policy_path"]
+        if os.path.isfile(pinned):
+            return pinned
+    return find_policy(project_dir)
 
 
 def _read_stdin_json() -> Optional[Dict[str, Any]]:
@@ -82,10 +92,14 @@ def _emit_json(data: Dict[str, Any]) -> None:
 
 
 def _write_state(project_dir: str, policy_path: str, prefix: str,
-                 backup_path: str = "") -> None:
-    """Write session state marker."""
+                 backup_path: str = "", policy_hash: str = "",
+                 policy_rule_count: int = 0) -> None:
+    """Write session state marker with pinned policy (G1)."""
     state = {
         "policy": policy_path,
+        "policy_path": policy_path,
+        "policy_sha256": policy_hash,
+        "policy_rule_count": policy_rule_count,
         "prefix": prefix,
         "project_dir": os.path.abspath(project_dir),
         "backup_path": backup_path,
@@ -255,29 +269,48 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
             )
         }
 
-    # Find policy
-    policy_path = _find_policy()
-    if not policy_path:
+    # Find policy (G1: resolve once, pin for session)
+    try:
+        policy_path = find_policy(project_dir)
+    except FileNotFoundError:
+        # CLOAK_FAIL_CLOSED=1: refuse to run unprotected
         return {
             "additionalContext": (
-                "[CloakMCP] No policy file found. "
-                "Set CLOAK_POLICY env or place examples/mcp_policy.yaml. "
-                "Secrets are NOT protected this session."
+                "[CloakMCP] FAIL-CLOSED: No policy found and CLOAK_FAIL_CLOSED=1. "
+                "Session cannot start without a policy. "
+                "Run 'cloak policy use <path>' to set one."
+            )
+        }
+
+    if not policy_path:
+        # G3: Banner — INACTIVE
+        return {
+            "additionalContext": (
+                "[CloakMCP] Guard INACTIVE: no policy found (writes not protected). "
+                "Set CLOAK_POLICY env, run 'cloak policy use <path>', "
+                "or place .cloak/policy.yaml in the project."
             )
         }
 
     prefix = os.environ.get("CLOAK_PREFIX", DEFAULT_PREFIX)
+
+    # G1: Compute policy hash for pinning
+    p_hash = policy_sha256(policy_path)
 
     # Check for legacy in-tree backups (security warning)
     legacy_warn = warn_legacy_backups(project_dir)
 
     try:
         policy = Policy.load(policy_path)
+        rule_count = len(policy.rules)
         # Create external backup (outside project tree)
         backup_path = create_backup(project_dir, external=True)
         # Pack without internal backup (already created externally)
         pack_dir(project_dir, policy, prefix=prefix, backup=False)
-        _write_state(project_dir, policy_path, prefix, backup_path=backup_path)
+        # G1: Write state with pinned policy path + hash
+        _write_state(project_dir, policy_path, prefix,
+                     backup_path=backup_path, policy_hash=p_hash,
+                     policy_rule_count=rule_count)
         # R5: write session manifest (file hashes at pack time)
         ignores = load_ignores(project_dir)
         manifest = build_manifest(project_dir, ignores)
@@ -295,12 +328,16 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
     _append_audit(project_dir, {
         "event": "session_pack",
         "policy": policy_path,
+        "policy_sha256": p_hash,
         "prefix": prefix,
         "manifest_files": manifest.get("total_files", 0),
     })
 
+    # G3: Banner — ACTIVE
     context = (
-        "[CloakMCP] Session started. All files have been packed — "
+        f"[CloakMCP] Guard ACTIVE: policy={policy_path} "
+        f"({rule_count} rules, sha256={p_hash[:16]}…). "
+        "All files have been packed — "
         "secrets replaced by deterministic tags (TAG-xxxxxxxxxxxx). "
         "Do NOT manually alter tag syntax. "
         "Secrets will be restored automatically when the session ends. "
@@ -521,9 +558,21 @@ def handle_guard_write(project_dir: str = ".") -> Dict[str, Any]:
     if not text_to_scan:
         return {}
 
-    # Find policy
-    policy_path = _find_policy()
+    # G1: Use pinned policy from session state, never from caller input
+    policy_path = _pinned_policy(project_dir)
     if not policy_path:
+        # G3: fail-closed check
+        if os.environ.get("CLOAK_FAIL_CLOSED") == "1":
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        "[CloakMCP Guard] FAIL-CLOSED: No policy found. "
+                        "Cannot verify content safety without a policy."
+                    ),
+                }
+            }
         return {}
 
     try:
@@ -623,8 +672,8 @@ def handle_prompt_guard(project_dir: str = ".") -> Dict[str, Any]:
     if not prompt:
         return {}
 
-    # Find policy
-    policy_path = _find_policy()
+    # G1: Use pinned policy from session state
+    policy_path = _pinned_policy(project_dir)
     if not policy_path:
         return {}
 
@@ -832,7 +881,7 @@ def _repack_single_file(project_dir: str, file_path: str) -> None:
     """
     from .dirpack import repack_file
 
-    policy_path = _find_policy()
+    policy_path = _pinned_policy(project_dir)
     if not policy_path:
         return
 
@@ -1072,6 +1121,68 @@ def _restore_from_backup(
         "backup_timestamp": backup["timestamp"],
         "restored_files": restored,
         "skipped_files": skipped,
+    })
+
+
+def handle_policy_reload(project_dir: str = ".") -> None:
+    """Reload policy mid-session (G2).
+
+    Re-resolves policy, updates session state with new path + hash,
+    prints old → new diff, logs policy_reload audit event.
+    """
+    project_dir = os.path.abspath(project_dir)
+
+    state = _read_state(project_dir)
+    if state is None:
+        print("[CloakMCP] No active session. Nothing to reload.", file=sys.stderr)
+        return
+
+    old_path = state.get("policy_path", state.get("policy", ""))
+    old_hash = state.get("policy_sha256", "")
+
+    try:
+        new_path = find_policy(project_dir)
+    except FileNotFoundError as e:
+        print(f"[CloakMCP] Policy reload failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not new_path:
+        print("[CloakMCP] No policy found. Session policy unchanged.", file=sys.stderr)
+        return
+
+    new_hash = policy_sha256(new_path)
+    new_policy = Policy.load(new_path)
+    new_rule_count = len(new_policy.rules)
+
+    if new_hash == old_hash:
+        print(f"[CloakMCP] Policy unchanged (sha256={new_hash[:16]}…).",
+              file=sys.stderr)
+        return
+
+    # Update session state
+    state["policy"] = new_path
+    state["policy_path"] = new_path
+    state["policy_sha256"] = new_hash
+    state["policy_rule_count"] = new_rule_count
+    state_path = os.path.join(project_dir, SESSION_STATE_FILE)
+    with open(state_path, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+
+    # Print diff
+    print(f"[CloakMCP] Policy reloaded:", file=sys.stderr)
+    print(f"  Old: {old_path} (sha256={old_hash[:16]}…)", file=sys.stderr)
+    print(f"  New: {new_path} ({new_rule_count} rules, sha256={new_hash[:16]}…)",
+          file=sys.stderr)
+    print("  Hint: Run 'cloak repack --dir .' to realign content.",
+          file=sys.stderr)
+
+    _append_audit(project_dir, {
+        "event": "policy_reload",
+        "old_policy": old_path,
+        "old_sha256": old_hash,
+        "new_policy": new_path,
+        "new_sha256": new_hash,
+        "new_rule_count": new_rule_count,
     })
 
 

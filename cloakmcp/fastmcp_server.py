@@ -2,6 +2,11 @@
 
 Wraps the 6 CloakMCP tools for stdio and network transport.
 
+Security (G5): Tools do NOT accept policy_path from the LLM.
+Policy is pinned at server startup and cannot be overridden per-call.
+Use --allow-policy-override to restore backwards-compatible behavior
+in controlled environments.
+
 Usage:
     cloak serve                                    # stdio (default)
     cloak serve --transport sse --port 8766        # SSE network
@@ -11,8 +16,10 @@ from __future__ import annotations
 
 import argparse
 import os
-from os.path import isfile, isdir, abspath
+from os.path import isdir, abspath
 from typing import Any, Dict, Optional
+
+from .policy import resolve_policy
 
 
 _MCP_INSTRUCTIONS = (
@@ -28,24 +35,8 @@ _MCP_INSTRUCTIONS = (
     "- Tags map to encrypted vault entries (Fernet AES-128, HMAC-SHA256)\n"
     "- Same secret always produces the same tag (HMAC determinism)\n"
     "- Vault never leaves the local machine\n"
+    "- Policy is pinned at server startup (not configurable per-call)\n"
 )
-
-
-def _resolve_policy(explicit: Optional[str] = None) -> str:
-    """Resolve policy path: explicit > CLOAK_POLICY env > default."""
-    if explicit and isfile(explicit):
-        return explicit
-    if explicit:
-        raise FileNotFoundError(f"Policy not found: {explicit}")
-    env = os.getenv("CLOAK_POLICY")
-    if env and isfile(env):
-        return env
-    default = "examples/mcp_policy.yaml"
-    if isfile(default):
-        return default
-    raise FileNotFoundError(
-        "No policy found. Set CLOAK_POLICY env or pass policy_path."
-    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,11 +46,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Path to YAML policy file")
     p.add_argument("--prefix", default="TAG",
                    help="Tag prefix for pack operations (default: TAG)")
+    p.add_argument("--allow-policy-override", action="store_true",
+                   default=False,
+                   help="Allow tools to accept policy_path parameter "
+                        "(backwards compat, NOT recommended)")
     return p
 
 
 def create_server(args=None):
     """Create and configure the FastMCP server with CloakMCP tools.
+
+    G5: Policy is resolved once at startup and pinned for all tool calls.
+    Tools do not accept policy_path unless --allow-policy-override is set.
 
     Returns:
         (mcp_server, None) tuple.
@@ -69,8 +67,12 @@ def create_server(args=None):
     if args is None:
         args = build_parser().parse_args()
 
-    _policy = getattr(args, "policy", None)
+    _explicit_policy = getattr(args, "policy", None)
     _prefix = getattr(args, "prefix", "TAG")
+    _allow_override = getattr(args, "allow_policy_override", False)
+
+    # G5: Pin policy at server startup
+    _policy_path = resolve_policy(explicit=_explicit_policy)
 
     mcp = FastMCP(
         name="cloakmcp",
@@ -82,12 +84,14 @@ def create_server(args=None):
     if hasattr(mcp, "_mcp_server"):
         mcp._mcp_server.version = cloakmcp.__version__
 
+    import sys
+    print(f"[cloakmcp] Policy pinned: {_policy_path}", file=sys.stderr)
+
     # ── Tool registration ──────────────────────────────────
 
     @mcp.tool()
     def cloak_scan_text(
         text: str,
-        policy_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Scan text for secrets using CloakMCP policy engine.
 
@@ -97,7 +101,7 @@ def create_server(args=None):
         from .scanner import scan
         from .normalizer import normalize
 
-        pol = Policy.load(_resolve_policy(policy_path or _policy))
+        pol = Policy.load(_policy_path)
         norm = normalize(text)
         matches = scan(norm, pol)
         return {
@@ -119,7 +123,6 @@ def create_server(args=None):
     @mcp.tool()
     def cloak_pack_text(
         text: str,
-        policy_path: Optional[str] = None,
         prefix: Optional[str] = None,
         project_root: str = ".",
     ) -> Dict[str, Any]:
@@ -131,7 +134,7 @@ def create_server(args=None):
         from .policy import Policy
         from .storage import Vault
 
-        pol = Policy.load(_resolve_policy(policy_path or _policy))
+        pol = Policy.load(_policy_path)
         vault = Vault(project_root)
         packed, count = pack_text(text, pol, vault, prefix=prefix or _prefix)
         return {"packed": packed, "count": count}
@@ -170,7 +173,6 @@ def create_server(args=None):
     @mcp.tool()
     def cloak_pack_dir(
         dir: str,
-        policy_path: Optional[str] = None,
         prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Pack entire directory: replace all secrets with vault tags.
@@ -182,7 +184,7 @@ def create_server(args=None):
 
         if not isdir(dir):
             raise ValueError(f"Directory not found: {dir}")
-        pol = Policy.load(_resolve_policy(policy_path or _policy))
+        pol = Policy.load(_policy_path)
         pack_dir(dir, pol, prefix=prefix or _prefix, backup=False)
         return {"status": "ok", "dir": abspath(dir)}
 

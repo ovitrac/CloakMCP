@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import ipaddress
 import os
 import re
@@ -182,6 +183,147 @@ class Policy:
             elif email.lower() == pat.lower():
                 return True
         return False
+
+
+# ── Shared policy resolution ─────────────────────────────────────
+
+
+def resolve_policy(explicit: Optional[str] = None, project_dir: str = ".") -> str:
+    """Resolve policy path with standard priority chain.
+
+    Resolution order:
+        1. Explicit path (if provided and exists)
+        2. CLOAK_POLICY environment variable
+        3. <project_dir>/.cloak/policy.yaml
+        4. examples/mcp_policy.yaml (development fallback)
+
+    Args:
+        explicit: Explicit policy path (operator-supplied, highest priority)
+        project_dir: Project root directory for .cloak/ lookup
+
+    Returns:
+        Absolute path to policy file.
+
+    Raises:
+        FileNotFoundError: If no policy found at any level.
+    """
+    # 1. Explicit path
+    if explicit:
+        abs_explicit = os.path.abspath(os.path.expanduser(explicit))
+        if os.path.isfile(abs_explicit):
+            return abs_explicit
+        raise FileNotFoundError(f"Policy not found: {explicit}")
+
+    # 2. CLOAK_POLICY env var
+    env = os.environ.get("CLOAK_POLICY")
+    if env:
+        abs_env = os.path.abspath(os.path.expanduser(env))
+        if os.path.isfile(abs_env):
+            return abs_env
+
+    # 3. Per-project .cloak/policy.yaml
+    project_policy = os.path.join(os.path.abspath(project_dir), ".cloak", "policy.yaml")
+    if os.path.isfile(project_policy):
+        return project_policy
+
+    # 4. Development fallback
+    default = os.path.join(os.path.abspath(project_dir), "examples", "mcp_policy.yaml")
+    if os.path.isfile(default):
+        return default
+
+    raise FileNotFoundError(
+        "No policy found. Use 'cloak policy use <path>' to set one, "
+        "or set CLOAK_POLICY env, or place .cloak/policy.yaml in the project."
+    )
+
+
+def find_policy(project_dir: str = ".") -> str:
+    """Find policy (non-raising). Returns "" if not found.
+
+    With CLOAK_FAIL_CLOSED=1: raises FileNotFoundError instead of returning "".
+
+    Args:
+        project_dir: Project root directory
+
+    Returns:
+        Absolute path to policy file, or "" if not found (fail-open mode).
+
+    Raises:
+        FileNotFoundError: Only when CLOAK_FAIL_CLOSED=1 and no policy found.
+    """
+    try:
+        return resolve_policy(project_dir=project_dir)
+    except FileNotFoundError:
+        if os.environ.get("CLOAK_FAIL_CLOSED") == "1":
+            raise
+        return ""
+
+
+def policy_sha256(path: str) -> str:
+    """Compute SHA-256 hash of a policy file.
+
+    Args:
+        path: Path to policy file
+
+    Returns:
+        Hex-encoded SHA-256 digest.
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def compare_policies(old_path: str, new_path: str) -> Dict[str, Any]:
+    """Compare two policies and detect downgrades.
+
+    A downgrade is defined as:
+    - Fewer detection rules, OR
+    - Any rule's severity lowered (critical > high > medium > low)
+
+    Args:
+        old_path: Path to the currently active policy
+        new_path: Path to the proposed new policy
+
+    Returns:
+        Dict with:
+        - is_downgrade: bool
+        - old_rules: int (rule count)
+        - new_rules: int (rule count)
+        - removed_rules: list of rule IDs present in old but not in new
+        - severity_changes: list of {rule_id, old_severity, new_severity}
+    """
+    _SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, None: 2}
+
+    old_policy = Policy.load(old_path)
+    new_policy = Policy.load(new_path)
+
+    old_ids = {r.id: r for r in old_policy.rules}
+    new_ids = {r.id: r for r in new_policy.rules}
+
+    removed_rules = sorted(set(old_ids.keys()) - set(new_ids.keys()))
+
+    severity_changes = []
+    for rid in sorted(set(old_ids.keys()) & set(new_ids.keys())):
+        old_sev = old_ids[rid].severity
+        new_sev = new_ids[rid].severity
+        if _SEVERITY_ORDER.get(new_sev, 2) < _SEVERITY_ORDER.get(old_sev, 2):
+            severity_changes.append({
+                "rule_id": rid,
+                "old_severity": old_sev or "medium",
+                "new_severity": new_sev or "medium",
+            })
+
+    is_downgrade = bool(removed_rules) or bool(severity_changes)
+
+    return {
+        "is_downgrade": is_downgrade,
+        "old_rules": len(old_policy.rules),
+        "new_rules": len(new_policy.rules),
+        "removed_rules": removed_rules,
+        "severity_changes": severity_changes,
+    }
 
 
 def _policy_to_dict(policy: Policy) -> Dict[str, Any]:

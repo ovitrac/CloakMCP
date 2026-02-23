@@ -98,7 +98,7 @@ class TestSessionStart:
         result = handle_session_start(str(tmp_path))
 
         assert "additionalContext" in result
-        assert "Session started" in result["additionalContext"]
+        assert "Guard ACTIVE" in result["additionalContext"]
 
         # State marker should exist
         assert _read_state(str(tmp_path)) is not None
@@ -124,7 +124,7 @@ class TestSessionStart:
         result = handle_session_start(str(tmp_path))
 
         assert "additionalContext" in result
-        assert "No policy file found" in result["additionalContext"]
+        assert "Guard INACTIVE" in result["additionalContext"]
 
 
 # ── session-end ─────────────────────────────────────────────────
@@ -662,7 +662,7 @@ class TestLifecycle:
 
         # Start
         result = handle_session_start(str(tmp_path))
-        assert "Session started" in result["additionalContext"]
+        assert "Guard ACTIVE" in result["additionalContext"]
 
         # Packed: secrets gone
         c1 = f1.read_text()
