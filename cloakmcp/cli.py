@@ -173,7 +173,9 @@ def _print_status(status: Dict[str, Any]) -> None:
 
 
 def main() -> None:
+    import cloakmcp
     p = argparse.ArgumentParser(prog="cloak", description="Micro-Cleanse Preprocessor (local secret-removal)")
+    p.add_argument("--version", action="version", version=f"%(prog)s {cloakmcp.__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     # ── Existing commands ───────────────────────────────────────
@@ -292,6 +294,20 @@ def main() -> None:
                             help="Execute destructive backup restore (required with --from-backup)")
     s_restore.add_argument("--backup-id", default=None,
                             help="Timestamp of specific backup to restore from")
+
+    # ── serve (FastMCP) ────────────────────────────────────────
+    s_serve = sub.add_parser("serve", help="Start the MCP server (FastMCP)")
+    s_serve.add_argument("--policy", default=None, help="Path to YAML policy file")
+    s_serve.add_argument("--prefix", default="TAG", help="Tag prefix (default: TAG)")
+    s_serve.add_argument("--transport", default="stdio",
+                          choices=["stdio", "streamable-http", "sse"],
+                          help="MCP transport (default: stdio)")
+    s_serve.add_argument("--host", default="localhost",
+                          help="Bind address for network transport (default: localhost)")
+    s_serve.add_argument("--port", type=int, default=8766,
+                          help="Port for network transport (default: 8766)")
+    s_serve.add_argument("--check", action="store_true",
+                          help="Validate server config and exit")
 
     # ── Dispatch ────────────────────────────────────────────────
 
@@ -504,6 +520,42 @@ def main() -> None:
         _validate_dir_path(args.dir, "directory")
         handle_restore(project_dir=args.dir, from_backup=args.from_backup,
                        force=args.force, backup_id=args.backup_id)
+        return
+
+    if args.cmd == "serve":
+        try:
+            from .fastmcp_server import create_server, build_parser as mcp_parser
+        except ImportError:
+            print("MCP dependencies not installed. Run: pip install cloakmcp[mcp]",
+                  file=sys.stderr)
+            sys.exit(1)
+        server_argv = []
+        if args.policy:
+            server_argv.extend(["--policy", args.policy])
+        if args.prefix and args.prefix != "TAG":
+            server_argv.extend(["--prefix", args.prefix])
+        server_args = mcp_parser().parse_args(server_argv)
+        if getattr(args, "check", False):
+            import cloakmcp
+            print(f"CloakMCP server OK (v{cloakmcp.__version__})")
+            return
+        mcp, _ = create_server(server_args)
+        transport = getattr(args, "transport", "stdio")
+        host = getattr(args, "host", "localhost")
+        port = getattr(args, "port", 8766)
+        if transport == "stdio":
+            print("CloakMCP MCP server (stdio). Ctrl+C to stop.",
+                  file=sys.stderr)
+            mcp.run()
+        else:
+            if host not in ("localhost",) and not host.startswith("127."):
+                print(f"WARNING: binding to {host} exposes the server "
+                      "beyond localhost.", file=sys.stderr)
+            print(f"CloakMCP MCP server ({transport} on {host}:{port})",
+                  file=sys.stderr)
+            mcp.settings.host = host
+            mcp.settings.port = port
+            mcp.run(transport=transport)
         return
 
     if args.cmd == "verify":

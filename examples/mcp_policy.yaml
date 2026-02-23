@@ -33,7 +33,7 @@ detection:
     severity: critical
   - id: jwt_token
     type: regex
-    pattern: '\b[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b'
+    pattern: '\b[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{20,}\b'
     action: pseudonymize
     severity: high
   - id: email

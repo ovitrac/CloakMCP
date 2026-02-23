@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.8.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.8.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-277%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
@@ -139,7 +139,7 @@ The **UserPromptSubmit guard** scans every user message for secrets — blocking
 
 ### 2. MCP Tool Server — 6 Tools
 
-CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over stdio). Any MCP-compatible client (Claude Code, Claude Desktop, or custom agents) discovers them automatically:
+CloakMCP exposes tools via the **Model Context Protocol**. The recommended approach uses the FastMCP-based `cloak serve` command (stdio by default, optional SSE/streamable-http). Any MCP-compatible client (Claude Code, Claude Desktop, or custom agents) discovers them automatically:
 
 | Tool | Description |
 |------|-------------|
@@ -157,12 +157,21 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
   "mcpServers": {
     "cloakmcp": {
       "type": "stdio",
-      "command": "cloak-mcp-server",
-      "env": { "CLOAK_POLICY": "examples/mcp_policy.yaml" }
+      "command": "cloak",
+      "args": ["serve", "--policy", "examples/mcp_policy.yaml"]
     }
   }
 }
 ```
+
+**Network transport** (SSE on port 8766):
+
+```bash
+cloak serve --transport sse --port 8766
+```
+
+> **Note:** `cloak serve` requires the optional MCP dependency: `pip install cloakmcp[mcp]`.
+> The legacy `cloak-mcp-server` entry point (raw JSON-RPC) remains available without extra dependencies.
 
 ---
 
@@ -209,7 +218,10 @@ CloakMCP exposes tools via the **Model Context Protocol** (JSON-RPC 2.0 over std
 | `cloak status --dir DIR` | Session diagnostics: state, manifest, delta, vault, tags, backups, audit |
 | `cloak restore --dir DIR` | Restore secrets from vault (default) or `--from-backup --force` |
 | `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, guard-read, prompt-guard, safety-guard, audit-log) |
-| `cloak-mcp-server` | MCP tool server (JSON-RPC 2.0 over stdio, any MCP client) |
+| `cloak serve` | FastMCP server: stdio (default), SSE, or streamable-http transport |
+| `cloak serve --check` | Validate MCP server configuration and exit |
+| `cloak --version` | Print CloakMCP version |
+| `cloak-mcp-server` | Legacy MCP tool server (JSON-RPC 2.0 over stdio) |
 
 ---
 
@@ -280,6 +292,7 @@ cd demo && bash run_demo.sh              # interactive 5-act presentation
 git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
+pip install -e ".[mcp]"   # optional: enables cloak serve (FastMCP)
 ```
 
 ### 2. Setup Keys
@@ -649,12 +662,13 @@ pytest --cov=cloakmcp --cov-report=term
 
 ```
 CloakMCP/
-├── cloakmcp/                      # Main package (14 modules, ~2,500 LOC)
+├── cloakmcp/                      # Main package (15 modules, ~3,800 LOC)
 │   ├── __init__.py
 │   ├── actions.py                 # Action engine (redact, pseudonymize, etc.)
 │   ├── audit.py                   # Audit logging
 │   ├── cli.py                     # CLI entry point (scan, sanitize, pack, unpack, hook)
 │   ├── dirpack.py                 # Directory pack/unpack walker
+│   ├── fastmcp_server.py          # FastMCP server (cloak serve, 6 tools)
 │   ├── filepack.py                # Text-level pack/unpack with overlap dedup
 │   ├── hooks.py                   # Claude Code hooks (session-start/end, guard-write)
 │   ├── mcp_server.py              # MCP tool server (JSON-RPC 2.0 over stdio)
@@ -704,7 +718,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.8.0)
+├── pyproject.toml                 # Package metadata (v0.8.1)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -761,7 +775,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.8.0 — `cloak status` diagnostics, `cloak restore` (vault-based + backup-based), ~37 new tests
+**Latest**: v0.8.1 — `cloak serve` (FastMCP), JWT regex fix, `cloak status`, `cloak restore`, `cloak --version`
 
 ---
 

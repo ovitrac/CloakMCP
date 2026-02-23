@@ -76,7 +76,7 @@ detection:
     action: block
   - id: test_jwt
     type: regex
-    pattern: '\\b[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+\\b'
+    pattern: '\\b[A-Za-z0-9\\-_]{20,}\\.[A-Za-z0-9\\-_]{20,}\\.[A-Za-z0-9\\-_]{20,}\\b'
     action: pseudonymize
   - id: test_ipv4
     type: ipv4
@@ -174,7 +174,7 @@ class TestScanner:
 
     def test_scan_jwt(self, policy: Policy):
         """Test JWT token detection"""
-        text = "Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc.def"
+        text = "Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         matches = scan(text, policy)
         # Should match JWT rule (not just email pattern)
         jwt_matches = [m for m in matches if m.rule.id == "test_jwt"]

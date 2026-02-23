@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-02-23
+
+### Added
+- **`cloak serve`**: FastMCP-based MCP server with zero-config stdio transport (default) and
+  optional SSE/streamable-http network transport. Wraps all 6 CloakMCP tools via the MCP SDK's
+  FastMCP framework. Supports `--policy`, `--prefix`, `--transport`, `--host`, `--port`, `--check`.
+  Requires optional dependency: `pip install cloakmcp[mcp]`.
+- **`cloak --version`**: prints version string for the CLI
+- **`cloakmcp/fastmcp_server.py`**: new module with FastMCP server, 6 tools, server instructions,
+  and CloakMCP version injection into MCP server info
+
+### Fixed
+- **JWT regex false positives**: The JWT detection rule matched version numbers (e.g., `0.8.0`),
+  Python attribute chains (`os.path.isfile`), and IP addresses (`127.0.0.1`) — caused guard-write
+  hook to block legitimate edits. Fixed by requiring 20+ characters per segment (`{20,}` instead
+  of `+`), matching only real JWTs while eliminating all false positives
+- **Stale version strings**: MCP server and FastAPI server had hardcoded old version — now read
+  dynamically from package metadata at runtime
+
 ## [0.8.0] - 2026-02-22
 
 ### Added
@@ -239,7 +258,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ovitrac/CloakMCP/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ovitrac/CloakMCP/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/ovitrac/CloakMCP/compare/v0.6.0...v0.6.3
