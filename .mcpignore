@@ -18,5 +18,27 @@ keys/
 .cloak-session-state
 .cloak-backups/
 
-# Test files contain intentional secrets for validation — must not be packed
+# CloakMCP internals — the protector must not pack itself.
+# Source contains regex patterns, base62 alphabets, IP literals, and PEM
+# headers that look like secrets but are detection logic.
+cloakmcp/
 tests/
+examples/
+docs/
+api/
+deploy/
+.github/
+assets/
+base/
+pyproject.toml
+README.md
+README*
+CHANGELOG.md
+CHANGELOG*
+SECURITY.md
+CONTRIBUTING.md
+AUTHORS.md
+LICENSE
+.mcp.json
+.mcpignore
+pytest.ini

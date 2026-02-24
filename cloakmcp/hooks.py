@@ -122,10 +122,12 @@ def _read_state(project_dir: str) -> Optional[Dict[str, Any]]:
 
 
 def _remove_state(project_dir: str) -> None:
-    """Remove session state marker."""
+    """Remove session state marker (tolerates missing file)."""
     state_path = os.path.join(project_dir, SESSION_STATE_FILE)
-    if os.path.isfile(state_path):
+    try:
         os.remove(state_path)
+    except FileNotFoundError:
+        pass
 
 
 def _write_manifest(project_dir: str, manifest: Dict[str, Any]) -> None:
@@ -148,10 +150,12 @@ def _read_manifest(project_dir: str) -> Optional[Dict[str, Any]]:
 
 
 def _remove_manifest(project_dir: str) -> None:
-    """Remove session manifest file."""
+    """Remove session manifest file (tolerates missing file)."""
     path = os.path.join(project_dir, SESSION_MANIFEST_FILE)
-    if os.path.isfile(path):
+    try:
         os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def _now_iso() -> str:

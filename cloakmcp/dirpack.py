@@ -4,7 +4,7 @@ import hashlib
 import os
 import shutil
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .policy import Policy
 from .storage import Vault, BACKUPS_DIR, _project_slug
@@ -27,7 +27,19 @@ def load_ignores(root: str) -> List[str]:
         globs.append(f"{BACKUP_DIR}/")
     return globs
 
-def iter_files(root: str, globs: List[str]) -> Iterable[str]:
+def iter_files(
+    root: str,
+    globs: List[str],
+    on_ignored: Optional[Callable[[str], None]] = None,
+) -> Iterable[str]:
+    """Yield absolute paths of files under *root* that are not ignored.
+
+    Args:
+        root: Directory to walk.
+        globs: Ignore patterns loaded from .mcpignore.
+        on_ignored: Optional callback invoked with the absolute path of every
+                    file skipped by an ignore rule (not called for pruned dirs).
+    """
     for dirpath, dirnames, filenames in os.walk(root):
         rp = os.path.relpath(dirpath, root)
         skip_dir = any(g.endswith("/") and fnmatch.fnmatch(rp + "/", g) for g in globs)
@@ -35,10 +47,13 @@ def iter_files(root: str, globs: List[str]) -> Iterable[str]:
             dirnames[:] = []
             continue
         for name in filenames:
-            rel = os.path.relpath(os.path.join(dirpath, name), root)
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root)
             if any(fnmatch.fnmatch(rel, g) for g in globs if not g.endswith("/")):
+                if on_ignored is not None:
+                    on_ignored(full)
                 continue
-            yield os.path.join(root, rel)
+            yield full
 
 def create_backup(root: str, external: bool = True) -> str:
     """Create a timestamped backup of files in the directory.
@@ -159,30 +174,41 @@ def pack_dir(
     import sys
     vault = Vault(root)
     ignores = load_ignores(root)
-    skipped_count = 0
+    error_count = 0
+    ignored_count = 0
     processed_count = 0
+    scanned_count = 0
     files_to_modify: List[Tuple[str, int]] = []  # (path, match_count)
 
+    def _count_ignored(path: str) -> None:
+        nonlocal ignored_count
+        ignored_count += 1
+
     # First pass: scan all files for secrets
-    for path in iter_files(root, ignores):
+    for path in iter_files(root, ignores, on_ignored=_count_ignored):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 text = f.read()
         except (OSError, IOError, PermissionError) as e:
             print(f"Warning: Skipping file (read error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
         except UnicodeDecodeError as e:
             print(f"Warning: Skipping file (encoding error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
 
+        scanned_count += 1
         _, count = pack_text(text, policy, vault, prefix=prefix)
         if count > 0:
             files_to_modify.append((path, count))
 
     if not files_to_modify:
-        print("No secrets found to replace.", file=sys.stderr)
+        print(
+            f"No secrets found to replace "
+            f"(scanned {scanned_count}, ignored {ignored_count}).",
+            file=sys.stderr,
+        )
         return
 
     # Dry-run mode: show preview and exit
@@ -207,7 +233,7 @@ def pack_dir(
                 text = f.read()
         except (OSError, IOError, PermissionError) as e:
             print(f"Warning: Skipping file (read error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
 
         packed, count = pack_text(text, policy, vault, prefix=prefix)
@@ -220,15 +246,19 @@ def pack_dir(
                 processed_count += 1
             except (OSError, IOError, PermissionError) as e:
                 print(f"Warning: Failed to write file: {path} - {e}", file=sys.stderr)
-                skipped_count += 1
+                error_count += 1
                 if os.path.exists(tmp):
                     try:
                         os.remove(tmp)
                     except:
                         pass
 
-    if processed_count > 0 or skipped_count > 0:
-        print(f"Pack complete: {processed_count} files modified, {skipped_count} files skipped", file=sys.stderr)
+    parts = [f"{processed_count} files modified"]
+    if ignored_count:
+        parts.append(f"{ignored_count} ignored")
+    if error_count:
+        parts.append(f"{error_count} errors")
+    print(f"Pack complete: {', '.join(parts)}.", file=sys.stderr)
 
 def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
     """Unpack a directory: restore tags from vault.
@@ -241,22 +271,27 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
     import sys
     vault = Vault(root)
     ignores = load_ignores(root)
-    skipped_count = 0
+    error_count = 0
+    ignored_count = 0
     processed_count = 0
     files_to_modify: List[Tuple[str, int]] = []  # (path, tag_count)
 
+    def _count_ignored(path: str) -> None:
+        nonlocal ignored_count
+        ignored_count += 1
+
     # First pass: scan all files for resolvable tags
-    for path in iter_files(root, ignores):
+    for path in iter_files(root, ignores, on_ignored=_count_ignored):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 text = f.read()
         except (OSError, IOError, PermissionError) as e:
             print(f"Warning: Skipping file (read error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
         except UnicodeDecodeError as e:
             print(f"Warning: Skipping file (encoding error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
 
         # Count resolvable tags
@@ -295,7 +330,7 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
                 text = f.read()
         except (OSError, IOError, PermissionError) as e:
             print(f"Warning: Skipping file (read error): {path} - {e}", file=sys.stderr)
-            skipped_count += 1
+            error_count += 1
             continue
 
         unpacked, count = unpack_text(text, vault)
@@ -309,15 +344,19 @@ def unpack_dir(root: str, dry_run: bool = False, backup: bool = True) -> None:
                 processed_count += 1
             except (OSError, IOError, PermissionError) as e:
                 print(f"Warning: Failed to write file: {path} - {e}", file=sys.stderr)
-                skipped_count += 1
+                error_count += 1
                 if os.path.exists(tmp):
                     try:
                         os.remove(tmp)
                     except:
                         pass
 
-    if processed_count > 0 or skipped_count > 0:
-        print(f"Unpack complete: {processed_count} files modified, {skipped_count} files skipped", file=sys.stderr)
+    parts = [f"{processed_count} files modified"]
+    if ignored_count:
+        parts.append(f"{ignored_count} ignored")
+    if error_count:
+        parts.append(f"{error_count} errors")
+    print(f"Unpack complete: {', '.join(parts)}.", file=sys.stderr)
 
 
 # ── R4: Post-unpack verification ──────────────────────────────────

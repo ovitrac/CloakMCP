@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-02-24
+
+### Fixed
+- **TOCTOU race in session cleanup**: `_remove_state()` and `_remove_manifest()` used
+  `if os.path.isfile(path): os.remove(path)` which races on abrupt exit (double Ctrl+C).
+  Replaced with `try: os.remove() except FileNotFoundError: pass` (EAFP pattern)
+- **CloakMCP self-packing prevention**: tightened `.mcpignore` to exclude the package source
+  (`cloakmcp/`), tests, examples, docs, configs, and metadata files. The protector must not
+  mutate its own detection logic during active sessions. Only `demo/src/` (user-facing demo
+  content) remains in scope
+
+### Changed
+- **Pack/unpack banners**: `pack_dir()` and `unpack_dir()` now report three distinct counters:
+  modified, ignored (via `.mcpignore`), and errors (read/write failures). `iter_files()` accepts
+  an optional `on_ignored` callback for callers that need the count
+
 ## [0.9.1] - 2026-02-23
 
 ### Fixed
@@ -312,7 +328,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ovitrac/CloakMCP/compare/v0.8.0...v0.8.1
