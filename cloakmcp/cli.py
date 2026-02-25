@@ -147,7 +147,9 @@ def _print_status(status: Dict[str, Any]) -> None:
     if backups:
         print(f"\nBackups: {len(backups)} available", file=sys.stderr)
         for b in backups[:5]:
-            print(f"  {b['timestamp']}  ({b['file_count']} files)", file=sys.stderr)
+            fmt = b.get("format", "unknown")
+            size_kb = b.get("size", 0) // 1024
+            print(f"  {b['timestamp']}  [{fmt}]  {size_kb} KB", file=sys.stderr)
         if len(backups) > 5:
             print(f"  ... and {len(backups) - 5} more", file=sys.stderr)
     else:

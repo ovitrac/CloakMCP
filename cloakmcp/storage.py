@@ -1,10 +1,13 @@
 from __future__ import annotations
+import base64
 import json
 import os
 import hashlib
 import hmac
 from typing import Dict, Optional
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 DEFAULT_HOME = os.path.join(os.path.expanduser("~"), ".cloakmcp")
 VAULTS_DIR = os.path.join(DEFAULT_HOME, "vaults")
@@ -12,9 +15,12 @@ KEYS_DIR = os.path.join(DEFAULT_HOME, "keys")
 BACKUPS_DIR = os.path.join(DEFAULT_HOME, "backups")
 
 def _ensure_dirs() -> None:
-    os.makedirs(VAULTS_DIR, exist_ok=True)
-    os.makedirs(KEYS_DIR, exist_ok=True)
-    os.makedirs(BACKUPS_DIR, exist_ok=True)
+    for d in (DEFAULT_HOME, VAULTS_DIR, KEYS_DIR, BACKUPS_DIR):
+        os.makedirs(d, exist_ok=True)
+        try:
+            os.chmod(d, 0o700)
+        except PermissionError:
+            pass
 
 def _project_slug(project_root: str) -> str:
     p = os.path.abspath(project_root)
@@ -39,6 +45,64 @@ def _gen_keyfile(path: str) -> bytes:
 def _load_key(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read().strip()
+
+
+# ── Backup encryption (HKDF-derived key) ────────────────────────
+
+
+def _derive_backup_key(project_key: bytes, slug: str) -> bytes:
+    """Derive a Fernet-compatible backup key via HKDF-SHA256.
+
+    Key separation: the vault uses the raw project Fernet key; backups use
+    an HKDF-derived subkey.  Compromising one does not expose the other.
+
+    Args:
+        project_key: Raw key file content (base64-encoded 32 bytes).
+        slug: Project slug (SHA-256 of absolute path, first 16 hex chars).
+
+    Returns:
+        URL-safe base64-encoded 32-byte key suitable for ``Fernet()``.
+    """
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"cloakmcp-backup",
+        info=slug.encode("utf-8"),
+    )
+    raw = hkdf.derive(project_key)
+    return base64.urlsafe_b64encode(raw)
+
+
+def _backup_fernet(project_root: str) -> Fernet:
+    """Return a Fernet instance keyed for backup encryption."""
+    _ensure_dirs()
+    slug = _project_slug(project_root)
+    key_path = _key_path(slug)
+    if not os.path.exists(key_path):
+        _gen_keyfile(key_path)
+    project_key = _load_key(key_path)
+    backup_key = _derive_backup_key(project_key, slug)
+    return Fernet(backup_key)
+
+
+def encrypt_backup(tar_bytes: bytes, project_root: str) -> bytes:
+    """Encrypt a tar.gz byte stream using the HKDF-derived backup key."""
+    return _backup_fernet(project_root).encrypt(tar_bytes)
+
+
+def decrypt_backup(enc_bytes: bytes, project_root: str) -> bytes:
+    """Decrypt a ``.enc`` backup file using the HKDF-derived backup key."""
+    return _backup_fernet(project_root).decrypt(enc_bytes)
+
+
+def backup_path_for(project_root: str, timestamp: str) -> str:
+    """Return the canonical path for an encrypted backup file.
+
+    Format: ``~/.cloakmcp/backups/<slug>/<timestamp>.enc``
+    """
+    slug = _project_slug(project_root)
+    return os.path.join(BACKUPS_DIR, slug, f"{timestamp}.enc")
+
 
 class Vault:
     """Encrypted mapping of tag -> secret for a project. Lives outside repo."""

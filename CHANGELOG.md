@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-02-25
+
+### Security
+- **Encrypted backups at rest (G6 Phase 2)**: Backups are now stored as encrypted `.enc` files
+  (gzip-compressed tar, Fernet-encrypted) instead of plaintext directory trees. Raw secrets in
+  `~/.cloakmcp/backups/` are no longer readable with standard tools (`cat`, `grep`, etc.)
+- **HKDF key separation**: Backup encryption uses an HKDF-SHA256–derived subkey
+  (`salt=b"cloakmcp-backup"`, `info=project_slug`) instead of the raw vault Fernet key.
+  Vault compromise does not expose backup contents and vice versa
+- **Permission hardening**: `_ensure_dirs()` now sets `0o700` on all managed directories
+  (`~/.cloakmcp/`, `vaults/`, `keys/`, `backups/`). Backup files are created with `0o600`
+
+### Added
+- `_derive_backup_key()`, `encrypt_backup()`, `decrypt_backup()`, `backup_path_for()` in
+  `storage.py` — HKDF-based backup encryption primitives
+- `list_backups()` in `dirpack.py` — enumerates both encrypted (`.enc`) and legacy plaintext
+  backup formats with size, timestamp, and format metadata
+- `_restore_from_backup_dir()` — legacy plaintext directory restore (factored out for
+  backward compatibility)
+- `_dir_size()` helper for directory-based backup size calculation
+- 26 new tests in `tests/test_backup_encryption.py`: HKDF derivation, round-trip
+  create/restore, permissions, backward compat, path traversal rejection, wrong-key
+  rejection, corrupt data handling
+
+### Changed
+- `create_backup()`: now produces a single encrypted `.enc` file (tar.gz → Fernet encrypt →
+  atomic write with `0o600`). Legacy `external=False` mode retained for testing
+- `restore_from_backup()`: auto-detects format — encrypted file (new) or plaintext directory
+  (legacy) — and dispatches accordingly
+- `cleanup_backup()`: handles both file and directory removal (EAFP pattern, race-safe)
+- `list_backups()` in `hooks.py`: delegates to new `dirpack.list_backups()` which handles
+  both formats. Output format changed: `file_count` → `size` + `format` fields
+- CLI `cloak status` backup listing: shows format (`encrypted`/`legacy_plaintext`) and size
+
 ## [0.9.2] - 2026-02-24
 
 ### Fixed
@@ -328,7 +362,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ovitrac/CloakMCP/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ovitrac/CloakMCP/compare/v0.8.1...v0.9.0

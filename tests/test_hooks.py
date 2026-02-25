@@ -1479,17 +1479,15 @@ class TestExternalBackup:
     """Tests for G6/P1: backups stored outside project tree."""
 
     def test_backup_created_outside_project(self, tmp_path):
-        """create_backup(external=True) writes to ~/.cloakmcp/backups/."""
+        """create_backup(external=True) writes encrypted .enc to ~/.cloakmcp/backups/."""
         root = str(tmp_path)
         (tmp_path / "file.txt").write_text("content\n")
         backup_path = create_backup(root, external=True)
         assert BACKUPS_DIR in backup_path
-        assert os.path.isdir(backup_path)
-        # At least one file backed up
-        backed_files = []
-        for dp, _, fns in os.walk(backup_path):
-            backed_files.extend(fns)
-        assert len(backed_files) >= 1
+        assert backup_path.endswith(".enc")
+        assert os.path.isfile(backup_path)
+        # Encrypted file is non-trivial size
+        assert os.path.getsize(backup_path) > 0
 
     def test_backup_not_in_project_tree(self, tmp_path):
         """No .cloak-backups/ directory in project after external backup."""
@@ -1521,15 +1519,16 @@ class TestExternalBackup:
         handle_session_end(str(tmp_path))
 
     def test_session_end_cleans_backup(self, tmp_path, monkeypatch):
-        """External backup removed after successful unpack."""
+        """External encrypted backup removed after successful unpack."""
         monkeypatch.setenv("CLOAK_POLICY", POLICY_PATH)
         (tmp_path / "secret.txt").write_text("Email: alice@example.org\n")
         handle_session_start(str(tmp_path))
         state = _read_state(str(tmp_path))
         backup_path = state["backup_path"]
-        assert os.path.isdir(backup_path)
+        assert os.path.isfile(backup_path)
+        assert backup_path.endswith(".enc")
         handle_session_end(str(tmp_path))
-        assert not os.path.isdir(backup_path)
+        assert not os.path.exists(backup_path)
 
     def test_legacy_backup_warning(self, tmp_path):
         """warn_legacy_backups returns warning when .cloak-backups/ exists."""
@@ -1783,7 +1782,8 @@ class TestListBackups:
         assert len(result) >= 1
         assert "timestamp" in result[0]
         assert "path" in result[0]
-        assert result[0]["file_count"] >= 1
+        assert result[0]["size"] > 0
+        assert result[0]["format"] == "encrypted"
 
     def test_no_backups_returns_empty(self, tmp_path):
         """Fresh dir -> empty list."""

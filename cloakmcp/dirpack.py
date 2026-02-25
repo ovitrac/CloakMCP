@@ -1,13 +1,18 @@
 from __future__ import annotations
 import fnmatch
 import hashlib
+import io
 import os
 import shutil
+import tarfile
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .policy import Policy
-from .storage import Vault, BACKUPS_DIR, _project_slug
+from .storage import (
+    Vault, BACKUPS_DIR, _project_slug,
+    encrypt_backup, decrypt_backup, backup_path_for,
+)
 from .filepack import TAG_RE, pack_text, unpack_text
 
 IGNORE_FILE = ".mcpignore"
@@ -56,69 +61,150 @@ def iter_files(
             yield full
 
 def create_backup(root: str, external: bool = True) -> str:
-    """Create a timestamped backup of files in the directory.
+    """Create an encrypted, timestamped backup of project files.
+
+    Files are collected into a gzip-compressed tar archive, then encrypted
+    using an HKDF-derived backup key (separate from the vault key).
 
     Args:
         root: Project root directory
-        external: If True (default), store backup outside the project tree
-                  in ~/.cloakmcp/backups/{slug}/{timestamp}/.
-                  If False, use legacy in-tree .cloak-backups/{timestamp}/.
+        external: If True (default), store encrypted backup outside the
+                  project tree as ``~/.cloakmcp/backups/<slug>/<ts>.enc``.
+                  If False, use legacy in-tree ``.cloak-backups/<ts>/``
+                  (plaintext directory — deprecated, for testing only).
 
     Returns:
-        Path to the created backup directory.
+        Path to the created ``.enc`` file (or backup directory if legacy).
     """
     import sys
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    if external:
-        slug = _project_slug(root)
-        backup_path = os.path.join(BACKUPS_DIR, slug, timestamp)
-    else:
-        backup_path = os.path.join(root, BACKUP_DIR, timestamp)
+    if not external:
+        # Legacy plaintext directory backup (deprecated)
+        bp = os.path.join(root, BACKUP_DIR, timestamp)
+        os.makedirs(bp, exist_ok=True)
+        ignores = load_ignores(root)
+        n = 0
+        for path in iter_files(root, ignores):
+            rel = os.path.relpath(path, root)
+            dst = os.path.join(bp, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            try:
+                shutil.copy2(path, dst)
+                n += 1
+            except (OSError, IOError, PermissionError) as e:
+                print(f"Warning: Failed to backup {rel}: {e}", file=sys.stderr)
+        print(f"Backup created: {bp} ({n} files, plaintext)", file=sys.stderr)
+        return bp
 
-    os.makedirs(backup_path, exist_ok=True)
+    # ── Encrypted backup (.enc) ──────────────────────────────────
+    enc_path = backup_path_for(root, timestamp)
+    os.makedirs(os.path.dirname(enc_path), exist_ok=True)
+    try:
+        os.chmod(os.path.dirname(enc_path), 0o700)
+    except PermissionError:
+        pass
 
     ignores = load_ignores(root)
     files_backed_up = 0
 
-    for path in iter_files(root, ignores):
-        rel_path = os.path.relpath(path, root)
-        backup_file = os.path.join(backup_path, rel_path)
-        os.makedirs(os.path.dirname(backup_file), exist_ok=True)
-        try:
-            shutil.copy2(path, backup_file)
-            files_backed_up += 1
-        except (OSError, IOError, PermissionError) as e:
-            print(f"Warning: Failed to backup {rel_path}: {e}", file=sys.stderr)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for path in iter_files(root, ignores):
+            rel = os.path.relpath(path, root)
+            try:
+                tar.add(path, arcname=rel)
+                files_backed_up += 1
+            except (OSError, IOError, PermissionError) as e:
+                print(f"Warning: Failed to backup {rel}: {e}", file=sys.stderr)
 
-    print(f"Backup created: {backup_path} ({files_backed_up} files)", file=sys.stderr)
-    return backup_path
+    enc = encrypt_backup(buf.getvalue(), root)
+
+    # Atomic write with restrictive permissions
+    tmp = enc_path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(enc)
+    try:
+        os.chmod(tmp, 0o600)
+    except PermissionError:
+        pass
+    os.replace(tmp, enc_path)
+
+    print(
+        f"Backup created: {enc_path} ({files_backed_up} files, encrypted)",
+        file=sys.stderr,
+    )
+    return enc_path
 
 
 def cleanup_backup(backup_path: str) -> None:
-    """Remove a timestamped backup directory after successful session end."""
-    if os.path.isdir(backup_path):
+    """Remove a backup (encrypted file or legacy directory) after session end."""
+    if os.path.isfile(backup_path):
+        try:
+            os.remove(backup_path)
+        except FileNotFoundError:
+            pass
+    elif os.path.isdir(backup_path):
         shutil.rmtree(backup_path, ignore_errors=True)
 
 
 def restore_from_backup(
     backup_path: str, project_dir: str, dry_run: bool = False
 ) -> Tuple[int, int]:
-    """Copy files from external backup back into project directory.
+    """Restore files from a backup into the project directory.
 
-    DESTRUCTIVE when dry_run=False: overwrites current files with backup copies.
+    Auto-detects format: encrypted ``.enc`` file (new) or plaintext
+    directory (legacy).  DESTRUCTIVE when ``dry_run=False``.
 
     Args:
-        backup_path: Path to the timestamped backup directory
+        backup_path: Path to the ``.enc`` file or legacy backup directory
         project_dir: Project root directory to restore into
-        dry_run: If True, count files only without copying
+        dry_run: If True, count files only without writing
 
     Returns:
         (restored_count, skipped_count)
     """
-    if not os.path.isdir(backup_path):
+    if os.path.isdir(backup_path):
+        return _restore_from_backup_dir(backup_path, project_dir, dry_run)
+
+    if not os.path.isfile(backup_path):
         return (0, 0)
 
+    # ── Encrypted backup ─────────────────────────────────────────
+    with open(backup_path, "rb") as f:
+        enc = f.read()
+
+    tar_bytes = decrypt_backup(enc, project_dir)
+    buf = io.BytesIO(tar_bytes)
+
+    restored = 0
+    skipped = 0
+    with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+        for member in tar.getmembers():
+            # Security: reject absolute paths and path traversal
+            if member.name.startswith("/") or ".." in member.name:
+                skipped += 1
+                continue
+            if not member.isfile():
+                continue
+            if dry_run:
+                restored += 1
+                continue
+            target = os.path.join(project_dir, member.name)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with tar.extractfile(member) as src:
+                if src is not None:
+                    with open(target, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+            restored += 1
+
+    return (restored, skipped)
+
+
+def _restore_from_backup_dir(
+    backup_path: str, project_dir: str, dry_run: bool = False
+) -> Tuple[int, int]:
+    """Legacy restore: copy files from a plaintext backup directory."""
     restored = 0
     skipped = 0
 
@@ -140,6 +226,53 @@ def restore_from_backup(
                 skipped += 1
 
     return (restored, skipped)
+
+
+def list_backups(project_root: str) -> List[Dict[str, Any]]:
+    """List available backups for a project (both encrypted and legacy).
+
+    Returns:
+        List of dicts with keys: timestamp, path, format, size.
+        Sorted newest-first.
+    """
+    slug = _project_slug(project_root)
+    backup_dir = os.path.join(BACKUPS_DIR, slug)
+    backups: List[Dict[str, Any]] = []
+
+    if not os.path.isdir(backup_dir):
+        return backups
+
+    for entry in sorted(os.listdir(backup_dir), reverse=True):
+        full = os.path.join(backup_dir, entry)
+        if entry.endswith(".enc") and os.path.isfile(full):
+            ts = entry[:-4]  # strip .enc
+            backups.append({
+                "timestamp": ts,
+                "path": full,
+                "format": "encrypted",
+                "size": os.path.getsize(full),
+            })
+        elif os.path.isdir(full):
+            backups.append({
+                "timestamp": entry,
+                "path": full,
+                "format": "legacy_plaintext",
+                "size": _dir_size(full),
+            })
+
+    return backups
+
+
+def _dir_size(path: str) -> int:
+    """Total size of all files in a directory tree."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total += os.path.getsize(os.path.join(dirpath, name))
+            except OSError:
+                pass
+    return total
 
 
 def warn_legacy_backups(root: str) -> Optional[str]:

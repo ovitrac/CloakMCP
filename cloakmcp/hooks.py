@@ -22,6 +22,7 @@ from .dirpack import (
     pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta,
     load_ignores, create_backup, cleanup_backup, warn_legacy_backups,
     restore_from_backup,
+    list_backups as _dirpack_list_backups,
 )
 from .filepack import pack_text, TAG_RE
 from .policy import Policy, find_policy, policy_sha256
@@ -217,37 +218,16 @@ def _read_audit_tail(project_dir: str, n: int = 10) -> List[Dict[str, Any]]:
 def list_backups(project_dir: str) -> List[Dict[str, Any]]:
     """Enumerate available backups for a project.
 
+    Delegates to ``dirpack.list_backups`` which handles both encrypted
+    (``.enc``) and legacy plaintext directory formats.
+
     Args:
         project_dir: Project root directory
 
     Returns:
-        List of {timestamp, path, file_count} sorted descending (most recent first).
+        List of dicts sorted descending (most recent first).
     """
-    slug = _project_slug(project_dir)
-    slug_dir = os.path.join(BACKUPS_DIR, slug)
-    if not os.path.isdir(slug_dir):
-        return []
-
-    backups: List[Dict[str, Any]] = []
-    try:
-        entries = sorted(os.listdir(slug_dir), reverse=True)
-    except OSError:
-        return []
-
-    for entry in entries:
-        entry_path = os.path.join(slug_dir, entry)
-        if not os.path.isdir(entry_path):
-            continue
-        file_count = 0
-        for _dp, _dns, fns in os.walk(entry_path):
-            file_count += len(fns)
-        backups.append({
-            "timestamp": entry,
-            "path": entry_path,
-            "file_count": file_count,
-        })
-
-    return backups
+    return _dirpack_list_backups(project_dir)
 
 
 # ── Hook handlers ───────────────────────────────────────────────
@@ -1090,7 +1070,9 @@ def _restore_from_backup(
     if backup_id is None:
         print("Available backups:", file=sys.stderr)
         for b in backups:
-            print(f"  {b['timestamp']}  ({b['file_count']} files)  {b['path']}",
+            fmt = b.get("format", "unknown")
+            size_kb = b.get("size", 0) // 1024
+            print(f"  {b['timestamp']}  [{fmt}]  {size_kb} KB  {b['path']}",
                   file=sys.stderr)
         print(
             "\nUsage: cloak restore --from-backup --backup-id <timestamp>",
