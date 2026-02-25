@@ -301,6 +301,19 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
     # Check for legacy in-tree backups (security warning)
     legacy_warn = warn_legacy_backups(project_dir)
 
+    # Check for legacy plaintext backups in external store
+    legacy_external_warn = None
+    try:
+        backups = _dirpack_list_backups(project_dir)
+        legacy_count = sum(1 for b in backups if b["format"] == "legacy_plaintext")
+        if legacy_count > 0:
+            legacy_external_warn = (
+                f"[CloakMCP] WARNING: {legacy_count} legacy plaintext backup(s) found. "
+                "Run 'cloak backup migrate' to encrypt them."
+            )
+    except Exception:
+        pass
+
     try:
         policy = Policy.load(policy_path)
         rule_count = len(policy.rules)
@@ -350,6 +363,19 @@ def handle_session_start(project_dir: str = ".") -> Dict[str, Any]:
         context += " (auto-recovered from stale session)"
     if legacy_warn:
         context = legacy_warn + "\n" + context
+    if legacy_external_warn:
+        context = legacy_external_warn + "\n" + context
+
+    # Prune hint: if backup count exceeds threshold, suggest pruning
+    try:
+        all_backups = _dirpack_list_backups(project_dir)
+        if len(all_backups) > 20:
+            context += (
+                f"\n[CloakMCP] {len(all_backups)} backups stored. "
+                "Run 'cloak backup prune --apply' to reclaim disk."
+            )
+    except Exception:
+        pass
 
     return {"additionalContext": context}
 

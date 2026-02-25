@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.10.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-308%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.11.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-354%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -222,6 +222,10 @@ cloak serve --transport sse --port 8766
 | `cloak status --dir DIR` | Session diagnostics: state, manifest, delta, vault, tags, backups, audit |
 | `cloak restore --dir DIR` | Restore secrets from vault (default) or `--from-backup --force` |
 | `cloak hook <event>` | Hook handler for Claude Code integration (session-start, session-end, guard-write, guard-read, prompt-guard, safety-guard, audit-log) |
+| `cloak key wrap` | Wrap key with passphrase (Tier 0 → Tier 1); requires `CLOAK_PASSPHRASE` |
+| `cloak key unwrap` | Unwrap key back to raw format (Tier 1 → Tier 0) |
+| `cloak backup migrate` | Encrypt legacy plaintext backups; `--dry-run`, `--quarantine` |
+| `cloak backup prune` | Remove old backups; `--ttl 30d`, `--keep-last 10`, `--apply`, `--include-legacy` |
 | `cloak serve` | FastMCP server: stdio (default), SSE, or streamable-http transport |
 | `cloak serve --check` | Validate MCP server configuration and exit |
 | `cloak --version` | Print CloakMCP version |
@@ -592,6 +596,7 @@ keys/
 | `CLOAK_AUDIT_TOOLS` | *(unset)* | Set to `1` to enable Tier 2 tool metadata logging (hashed file paths) |
 | `CLOAK_REPACK_ON_WRITE` | *(unset)* | Set to `1` to auto-repack files after Write/Edit tool calls. Adds latency per write. |
 | `CLOAK_FAIL_CLOSED` | *(unset)* | Set to `1` to deny writes and refuse sessions when no policy is found (recommended for regulated environments) |
+| `CLOAK_PASSPHRASE` | *(unset)* | Passphrase for Tier 1 key wrapping (scrypt). When set, new keys are wrapped and existing wrapped keys are unlocked automatically |
 
 ---
 

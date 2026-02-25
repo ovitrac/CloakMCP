@@ -3,9 +3,10 @@ import fnmatch
 import hashlib
 import io
 import os
+import re
 import shutil
 import tarfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .policy import Policy
@@ -273,6 +274,229 @@ def _dir_size(path: str) -> int:
             except OSError:
                 pass
     return total
+
+
+def _parse_ttl(ttl_str: str) -> timedelta:
+    """Parse a duration string like '7d', '30d', '24h', '90m'.
+
+    Raises ValueError on invalid format.
+    """
+    match = re.match(r'^(\d+)([dhm])$', ttl_str)
+    if not match:
+        raise ValueError(f"Invalid TTL format: {ttl_str} (use e.g. 30d, 24h, 90m)")
+    value, unit = int(match.group(1)), match.group(2)
+    if unit == 'd':
+        return timedelta(days=value)
+    if unit == 'h':
+        return timedelta(hours=value)
+    return timedelta(minutes=value)
+
+
+def _parse_backup_timestamp(ts_str: str) -> Optional[datetime]:
+    """Parse a backup timestamp string (YYYYMMDD_HHMMSS) to datetime."""
+    try:
+        return datetime.strptime(ts_str, "%Y%m%d_%H%M%S")
+    except ValueError:
+        return None
+
+
+def migrate_legacy_backup(
+    legacy_dir: str, project_root: str, quarantine: bool = False
+) -> Optional[str]:
+    """Encrypt a single legacy plaintext backup directory into a .enc file.
+
+    Args:
+        legacy_dir: Path to legacy backup directory (e.g. ~/.cloakmcp/backups/<slug>/<ts>/)
+        project_root: Project root directory (for key derivation).
+        quarantine: If True, move to quarantine instead of deleting after migration.
+
+    Returns:
+        Path to the new .enc file on success, None on failure.
+    """
+    if not os.path.isdir(legacy_dir):
+        return None
+
+    timestamp = os.path.basename(legacy_dir)
+    enc_path = backup_path_for(project_root, timestamp)
+
+    # Build tar.gz in memory from legacy directory
+    buf = io.BytesIO()
+    file_hashes: Dict[str, str] = {}
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for dirpath, _dirnames, filenames in os.walk(legacy_dir):
+            for name in filenames:
+                full = os.path.join(dirpath, name)
+                rel = os.path.relpath(full, legacy_dir)
+                tar.add(full, arcname=rel)
+                # Record SHA-256 for verification
+                h = hashlib.sha256()
+                with open(full, "rb") as f:
+                    for chunk in iter(lambda: f.read(8192), b""):
+                        h.update(chunk)
+                file_hashes[rel] = h.hexdigest()
+
+    if not file_hashes:
+        # Empty directory — just remove it
+        shutil.rmtree(legacy_dir, ignore_errors=True)
+        return None
+
+    # Encrypt
+    enc = encrypt_backup(buf.getvalue(), project_root)
+
+    # Atomic write
+    tmp = enc_path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(enc)
+    try:
+        os.chmod(tmp, 0o600)
+    except PermissionError:
+        pass
+    os.replace(tmp, enc_path)
+
+    # Verify: decrypt and compare file hashes
+    with open(enc_path, "rb") as f:
+        verify_enc = f.read()
+    verify_tar = decrypt_backup(verify_enc, project_root)
+    verify_buf = io.BytesIO(verify_tar)
+    with tarfile.open(fileobj=verify_buf, mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            extracted = tar.extractfile(member)
+            if extracted is None:
+                continue
+            h = hashlib.sha256(extracted.read()).hexdigest()
+            if file_hashes.get(member.name) != h:
+                # Verification failed — remove .enc, keep legacy
+                try:
+                    os.remove(enc_path)
+                except OSError:
+                    pass
+                return None
+
+    # Verification passed — remove or quarantine legacy directory
+    if quarantine:
+        quarantine_dir = os.path.join(
+            os.path.dirname(os.path.dirname(legacy_dir)),
+            "..", "quarantine",
+            os.path.basename(os.path.dirname(legacy_dir)),
+            timestamp,
+        )
+        quarantine_dir = os.path.normpath(quarantine_dir)
+        os.makedirs(os.path.dirname(quarantine_dir), exist_ok=True)
+        shutil.move(legacy_dir, quarantine_dir)
+    else:
+        shutil.rmtree(legacy_dir, ignore_errors=True)
+
+    return enc_path
+
+
+def migrate_all_legacy_backups(
+    project_root: str,
+    dry_run: bool = True,
+    quarantine: bool = False,
+) -> List[Dict[str, Any]]:
+    """Migrate all legacy plaintext backups for a project.
+
+    Args:
+        project_root: Project root directory.
+        dry_run: If True, only list what would be migrated.
+        quarantine: Move legacy dirs to quarantine instead of deleting.
+
+    Returns:
+        List of result dicts with keys: timestamp, status, enc_path, size.
+    """
+    backups = list_backups(project_root)
+    legacy = [b for b in backups if b["format"] == "legacy_plaintext"]
+    results: List[Dict[str, Any]] = []
+
+    for b in legacy:
+        entry: Dict[str, Any] = {
+            "timestamp": b["timestamp"],
+            "size": b["size"],
+        }
+        if dry_run:
+            entry["status"] = "would_migrate"
+            results.append(entry)
+            continue
+
+        enc_path = migrate_legacy_backup(
+            b["path"], project_root, quarantine=quarantine
+        )
+        if enc_path:
+            entry["status"] = "migrated"
+            entry["enc_path"] = enc_path
+        else:
+            entry["status"] = "failed"
+        results.append(entry)
+
+    return results
+
+
+def prune_backups(
+    project_root: str,
+    ttl: str = "30d",
+    keep_last: int = 10,
+    apply: bool = False,
+    include_legacy: bool = False,
+) -> Dict[str, Any]:
+    """Prune old backups based on TTL and keep-last policy.
+
+    Args:
+        project_root: Project root directory.
+        ttl: Time-to-live string (e.g. '30d', '24h').
+        keep_last: Always keep the N most recent backups.
+        apply: If True, actually delete. If False, dry-run.
+        include_legacy: If True, also prune legacy plaintext backups.
+
+    Returns:
+        Dict with keys: pruned, kept, freed_bytes, details.
+    """
+    ttl_delta = _parse_ttl(ttl)
+    now = datetime.now()
+    backups = list_backups(project_root)
+
+    if not include_legacy:
+        backups = [b for b in backups if b["format"] != "legacy_plaintext"]
+
+    # Backups are already sorted newest-first by list_backups()
+    pruned = 0
+    kept = 0
+    freed_bytes = 0
+    details: List[Dict[str, Any]] = []
+
+    for i, b in enumerate(backups):
+        ts = _parse_backup_timestamp(b["timestamp"])
+        action = "keep"
+
+        if i < keep_last:
+            action = "keep"
+        elif ts and (now - ts) > ttl_delta:
+            action = "prune"
+        else:
+            action = "keep"
+
+        if action == "prune":
+            if apply:
+                cleanup_backup(b["path"])
+                freed_bytes += b.get("size", 0)
+            pruned += 1
+        else:
+            kept += 1
+
+        details.append({
+            "timestamp": b["timestamp"],
+            "format": b["format"],
+            "size": b.get("size", 0),
+            "action": action if not apply else ("deleted" if action == "prune" else "kept"),
+        })
+
+    return {
+        "pruned": pruned,
+        "kept": kept,
+        "freed_bytes": freed_bytes,
+        "details": details,
+    }
 
 
 def warn_legacy_backups(root: str) -> Optional[str]:

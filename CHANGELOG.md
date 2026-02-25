@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-02-25
+
+### Security
+- **Passphrase-wrapped keys (Tier 1)**: Key files at `~/.cloakmcp/keys/` can now be encrypted
+  at rest using a passphrase-derived wrapping key (scrypt, n=2^17, 128 MiB memory cost). Set
+  `CLOAK_PASSPHRASE` env var to enable. Wrapping format uses `CLOAKKEY1` magic header for
+  unambiguous format detection. Raw key (Tier 0) remains the default for backward compatibility
+- **Permission verification**: `_verify_permissions()` checks and auto-corrects file permissions
+  on every key access. Logs a warning if permissions were wrong (indicates external tampering)
+
+### Added
+- `cloak key wrap` — Wrap existing raw key with passphrase (Tier 0 → Tier 1)
+- `cloak key unwrap` — Unwrap key back to raw format (Tier 1 → Tier 0)
+- `cloak backup migrate` — Encrypt legacy plaintext backup directories into `.enc` files with
+  integrity verification (decrypt → SHA-256 compare before deleting original). Supports
+  `--dry-run` (default) and `--quarantine` modes
+- `cloak backup prune` — Remove old backups based on TTL and keep-last policy. Supports `--ttl`
+  (default: 30d), `--keep-last` (default: 10), `--apply` (dry-run without), `--include-legacy`
+- `_derive_wrapping_key()`, `_wrap_key()`, `_unwrap_key()`, `_detect_key_format()` in
+  `storage.py` — scrypt-based key wrapping primitives
+- `wrap_keyfile()`, `unwrap_keyfile()` — High-level key file wrapping/unwrapping with
+  verify-before-write safety
+- `migrate_legacy_backup()`, `migrate_all_legacy_backups()` in `dirpack.py` — per-backup and
+  batch migration of plaintext directories to encrypted tarballs
+- `prune_backups()`, `_parse_ttl()` in `dirpack.py` — TTL-based backup pruning with keep-last
+  safety net
+- `CLOAK_PASSPHRASE` environment variable for Tier 1 key wrapping
+- SessionStart: warns when legacy plaintext backups exist in external store; emits prune hint
+  when backup count exceeds 20
+- 46 new tests: `tests/test_key_wrapping.py` (25 tests), `tests/test_backup_lifecycle.py`
+  (21 tests)
+
 ## [0.10.1] - 2026-02-25
 
 ### Fixed

@@ -314,6 +314,38 @@ def main() -> None:
     s_restore.add_argument("--backup-id", default=None,
                             help="Timestamp of specific backup to restore from")
 
+    # ── v0.11.0: key management ────────────────────────────────
+    s_key = sub.add_parser("key", help="Key management (wrap/unwrap)")
+    key_sub = s_key.add_subparsers(dest="key_cmd", required=True)
+
+    s_key_wrap = key_sub.add_parser("wrap", help="Wrap key with passphrase (Tier 0 -> Tier 1)")
+    s_key_wrap.add_argument("--dir", default=".", help="Project root directory")
+
+    s_key_unwrap = key_sub.add_parser("unwrap", help="Unwrap key back to raw (Tier 1 -> Tier 0)")
+    s_key_unwrap.add_argument("--dir", default=".", help="Project root directory")
+
+    # ── v0.11.0: backup management ──────────────────────────────
+    s_backup = sub.add_parser("backup", help="Backup management (migrate, prune)")
+    backup_sub = s_backup.add_subparsers(dest="backup_cmd", required=True)
+
+    s_backup_migrate = backup_sub.add_parser("migrate", help="Encrypt legacy plaintext backups")
+    s_backup_migrate.add_argument("--dir", default=".", help="Project root directory")
+    s_backup_migrate.add_argument("--dry-run", action="store_true",
+                                   help="Preview only (default behavior)")
+    s_backup_migrate.add_argument("--quarantine", action="store_true",
+                                   help="Move legacy dirs to quarantine instead of deleting")
+
+    s_backup_prune = backup_sub.add_parser("prune", help="Remove old backups")
+    s_backup_prune.add_argument("--dir", default=".", help="Project root directory")
+    s_backup_prune.add_argument("--ttl", default="30d",
+                                 help="TTL threshold (e.g. 30d, 24h, 90m) — default: 30d")
+    s_backup_prune.add_argument("--keep-last", type=int, default=10,
+                                 help="Always keep N newest backups (default: 10)")
+    s_backup_prune.add_argument("--apply", action="store_true",
+                                 help="Actually delete (dry-run without this flag)")
+    s_backup_prune.add_argument("--include-legacy", action="store_true",
+                                 help="Also prune legacy plaintext directories")
+
     # ── serve (FastMCP) ────────────────────────────────────────
     s_serve = sub.add_parser("serve", help="Start the MCP server (FastMCP)")
     s_serve.add_argument("--policy", default=None, help="Path to YAML policy file")
@@ -644,6 +676,88 @@ def main() -> None:
         handle_restore(project_dir=args.dir, from_backup=args.from_backup,
                        force=args.force, backup_id=args.backup_id)
         return
+
+    if args.cmd == "key":
+        from .storage import wrap_keyfile, unwrap_keyfile, _project_slug, _key_path, _detect_key_format
+
+        if args.key_cmd == "wrap":
+            _validate_dir_path(args.dir, "directory")
+            try:
+                path = wrap_keyfile(args.dir)
+                print(f"Key wrapped: {path}", file=sys.stderr)
+                print("  Format: CLOAKKEY1 (passphrase-wrapped via scrypt)", file=sys.stderr)
+            except (RuntimeError, FileNotFoundError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            return
+
+        elif args.key_cmd == "unwrap":
+            _validate_dir_path(args.dir, "directory")
+            try:
+                path = unwrap_keyfile(args.dir)
+                print(f"Key unwrapped: {path}", file=sys.stderr)
+                print("  Format: raw Fernet key (Tier 0)", file=sys.stderr)
+            except (RuntimeError, FileNotFoundError) as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            except Exception as e:
+                print(f"Error: wrong passphrase or corrupt key file: {e}", file=sys.stderr)
+                sys.exit(1)
+            return
+
+    if args.cmd == "backup":
+        from .dirpack import migrate_all_legacy_backups, prune_backups
+
+        if args.backup_cmd == "migrate":
+            _validate_dir_path(args.dir, "directory")
+            dry_run = getattr(args, 'dry_run', True)
+            quarantine = getattr(args, 'quarantine', False)
+            results = migrate_all_legacy_backups(
+                args.dir, dry_run=dry_run, quarantine=quarantine
+            )
+            if not results:
+                print("No legacy plaintext backups found.", file=sys.stderr)
+                return
+            for r in results:
+                status = r["status"]
+                size_kb = r.get("size", 0) // 1024
+                print(f"  {r['timestamp']}  [{status}]  {size_kb} KB", file=sys.stderr)
+            migrated = sum(1 for r in results if r["status"] == "migrated")
+            failed = sum(1 for r in results if r["status"] == "failed")
+            would = sum(1 for r in results if r["status"] == "would_migrate")
+            if dry_run:
+                print(f"\n[DRY RUN] Would migrate {would} backup(s).", file=sys.stderr)
+                print("Run without --dry-run to execute.", file=sys.stderr)
+            else:
+                print(f"\nMigrated: {migrated}, Failed: {failed}", file=sys.stderr)
+            return
+
+        elif args.backup_cmd == "prune":
+            _validate_dir_path(args.dir, "directory")
+            try:
+                result = prune_backups(
+                    args.dir,
+                    ttl=args.ttl,
+                    keep_last=args.keep_last,
+                    apply=args.apply,
+                    include_legacy=args.include_legacy,
+                )
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            for d in result["details"]:
+                size_kb = d.get("size", 0) // 1024
+                print(f"  {d['timestamp']}  [{d['format']}]  {size_kb} KB  -> {d['action']}",
+                      file=sys.stderr)
+            freed_kb = result["freed_bytes"] // 1024
+            if args.apply:
+                print(f"\nPruned: {result['pruned']}, Kept: {result['kept']}, "
+                      f"Freed: {freed_kb} KB", file=sys.stderr)
+            else:
+                print(f"\n[DRY RUN] Would prune: {result['pruned']}, Keep: {result['kept']}",
+                      file=sys.stderr)
+                print("Add --apply to execute.", file=sys.stderr)
+            return
 
     if args.cmd == "serve":
         try:
