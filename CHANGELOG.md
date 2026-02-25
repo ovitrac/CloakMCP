@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-02-25
+
+### Fixed
+- **Test artifact pollution**: Added `tests/conftest.py` with autouse fixture that snapshots
+  `~/.cloakmcp/{keys,vaults,backups}/` before each test and removes new entries on teardown.
+  Previously, every pytest run leaked orphaned key/vault/backup files (one per `tmp_path`
+  slug), accumulating thousands of entries over time (observed: 3,699 keys, 2,539 vaults,
+  1,234 backup dirs from repeated test runs)
+
 ## [0.10.0] - 2026-02-25
 
 ### Security
@@ -362,7 +371,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/ovitrac/CloakMCP/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ovitrac/CloakMCP/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/ovitrac/CloakMCP/compare/v0.9.0...v0.9.1
