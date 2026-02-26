@@ -13,6 +13,7 @@ from .policy import Policy
 from .storage import (
     Vault, BACKUPS_DIR, _project_slug,
     encrypt_backup, decrypt_backup, backup_path_for,
+    _safe_chmod,
 )
 from .filepack import TAG_RE, pack_text, unpack_text
 
@@ -101,10 +102,7 @@ def create_backup(root: str, external: bool = True) -> str:
     # ── Encrypted backup (.enc) ──────────────────────────────────
     enc_path = backup_path_for(root, timestamp)
     os.makedirs(os.path.dirname(enc_path), exist_ok=True)
-    try:
-        os.chmod(os.path.dirname(enc_path), 0o700)
-    except PermissionError:
-        pass
+    _safe_chmod(os.path.dirname(enc_path), 0o700)
 
     ignores = load_ignores(root)
     files_backed_up = 0
@@ -125,10 +123,7 @@ def create_backup(root: str, external: bool = True) -> str:
     tmp = enc_path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(enc)
-    try:
-        os.chmod(tmp, 0o600)
-    except PermissionError:
-        pass
+    _safe_chmod(tmp, 0o600)
     os.replace(tmp, enc_path)
 
     print(
@@ -347,10 +342,7 @@ def migrate_legacy_backup(
     tmp = enc_path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(enc)
-    try:
-        os.chmod(tmp, 0o600)
-    except PermissionError:
-        pass
+    _safe_chmod(tmp, 0o600)
     os.replace(tmp, enc_path)
 
     # Verify: decrypt and compare file hashes

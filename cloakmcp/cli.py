@@ -296,6 +296,28 @@ def main() -> None:
     # ── scripts-path ─────────────────────────────────────────────
     sub.add_parser("scripts-path", help="Print path to bundled installer scripts")
 
+    # ── hooks-path (toolbox discovery contract) ────────────────
+    s_hpath = sub.add_parser("hooks-path",
+                             help="Print path to bundled hook scripts (toolbox contract)")
+    s_hpath.add_argument("--format", choices=["sh", "py", "cli"], default="sh",
+                         dest="hook_format",
+                         help="Hook format: sh (POSIX), py (Python), cli (command prefix)")
+
+    # ── install (cross-platform hook installer) ────────────────
+    s_install = sub.add_parser("install", help="Install Claude Code hooks (cross-platform)")
+    s_install.add_argument("--profile", choices=["secrets-only", "hardened"],
+                           default="secrets-only", help="Hook profile (default: secrets-only)")
+    s_install.add_argument("--method", choices=["cli", "copy", "symlink"],
+                           default="cli", help="Install method (default: cli)")
+    s_install.add_argument("--policy", default="", help="Set per-project policy file")
+    s_install.add_argument("--dry-run", action="store_true", help="Preview without changes")
+    s_install.add_argument("--uninstall", action="store_true", help="Remove hooks")
+    s_install.add_argument("--dir", default=".", help="Project root directory")
+
+    # ── doctor (cross-platform diagnostics) ────────────────────
+    s_doctor = sub.add_parser("doctor", help="Check CloakMCP installation health")
+    s_doctor.add_argument("--dir", default=".", help="Project root directory")
+
     # ── v0.8.0: session status ─────────────────────────────────────
     s_status = sub.add_parser("status", help="Show session status and diagnostics")
     s_status.add_argument("--dir", default=".", help="Project root directory")
@@ -811,9 +833,134 @@ def main() -> None:
             sys.exit(1)
         sys.exit(0)
 
+    if args.cmd == "doctor":
+        import json
+        import shutil
+        import cloakmcp
+        from .installer import hooks_path as _hooks_path
+        from .policy import find_policy
+        project_dir = os.path.abspath(args.dir)
+        settings_file = os.path.join(project_dir, ".claude", "settings.local.json")
+
+        print(f"CloakMCP Doctor v{cloakmcp.__version__}")
+        print(f"{'─' * 50}")
+
+        # Platform
+        print(f"  Platform:       {sys.platform}")
+        print(f"  Python:         {sys.version.split()[0]}")
+
+        # cloak in PATH
+        cloak_bin = shutil.which("cloak")
+        if cloak_bin:
+            print(f"  cloak CLI:      {cloak_bin} ({cloakmcp.__version__})")
+        else:
+            print(f"  cloak CLI:      NOT FOUND in PATH")
+
+        # python -m cloakmcp.hooks
+        try:
+            from cloakmcp.hooks.__main__ import main as _hooks_main
+            print(f"  python -m:      python -m cloakmcp.hooks [OK]")
+        except ImportError:
+            print(f"  python -m:      UNAVAILABLE")
+
+        # Hook scripts
+        hooks_dir_sh = _hooks_path("sh")
+        sh_count = len([f for f in os.listdir(hooks_dir_sh)
+                        if f.endswith(".sh")]) if os.path.isdir(hooks_dir_sh) else 0
+        py_count = len([f for f in os.listdir(hooks_dir_sh)
+                        if f.endswith(".py")]) if os.path.isdir(hooks_dir_sh) else 0
+        print(f"  Hook scripts:   {sh_count} .sh + {py_count} .py in {hooks_dir_sh}")
+
+        # Installed hook method
+        if os.path.isfile(settings_file):
+            with open(settings_file) as f:
+                sdata = json.load(f)
+            hooks_cfg = sdata.get("hooks", {})
+            if hooks_cfg:
+                # Detect method by inspecting first hook command
+                first_cmd = ""
+                for entries in hooks_cfg.values():
+                    for entry in entries:
+                        for h in entry.get("hooks", []):
+                            first_cmd = h.get("command", "")
+                            break
+                        if first_cmd:
+                            break
+                    if first_cmd:
+                        break
+                if first_cmd.endswith(".sh"):
+                    method = "shell (.sh wrappers)"
+                elif first_cmd.startswith("cloak hook"):
+                    method = "cli (cloak hook <event>)"
+                elif first_cmd.startswith("python"):
+                    method = "python (.py scripts)"
+                else:
+                    method = f"custom ({first_cmd})"
+                print(f"  Hook method:    {method}")
+            else:
+                print(f"  Hook method:    not configured")
+        else:
+            print(f"  Hook method:    not installed (no settings.local.json)")
+
+        # Policy
+        policy = find_policy(project_dir)
+        if policy:
+            print(f"  Policy:         {policy}")
+        else:
+            print(f"  Policy:         NONE (no policy found)")
+
+        # Vault
+        from .storage import KEYS_DIR, VAULTS_DIR, BACKUPS_DIR, _project_slug
+        slug = _project_slug(project_dir)
+        key_file = os.path.join(KEYS_DIR, f"{slug}.key")
+        vault_file = os.path.join(VAULTS_DIR, f"{slug}.vault")
+        print(f"  Project slug:   {slug}")
+        print(f"  Vault key:      {'EXISTS' if os.path.isfile(key_file) else 'NONE'}")
+        print(f"  Vault data:     {'EXISTS' if os.path.isfile(vault_file) else 'NONE'}")
+
+        return
+
     if args.cmd == "scripts-path":
         from importlib.resources import files
         print(files("cloakmcp") / "scripts")
+        return
+
+    if args.cmd == "hooks-path":
+        from .installer import hooks_path
+        print(hooks_path(args.hook_format))
+        return
+
+    if args.cmd == "install":
+        from .installer import install_hooks
+        result = install_hooks(
+            project_dir=args.dir,
+            profile=args.profile,
+            method=args.method,
+            policy=args.policy,
+            dry_run=args.dry_run,
+            uninstall=args.uninstall,
+        )
+        action = result["action"]
+        if result["dry_run"]:
+            print(f"[DRY-RUN] Would {action} hooks:")
+        else:
+            print(f"[OK] Hooks {action}ed:")
+        print(f"  Profile: {result['profile']}")
+        print(f"  Method:  {result['method']}")
+        if result.get("settings_template"):
+            print(f"  Template: {result['settings_template']}")
+        if result["hooks_installed"]:
+            for h in result["hooks_installed"]:
+                print(f"    - {h}")
+        if result.get("policy"):
+            print(f"  Policy: {result['policy']}")
+        if result.get("backup_dir"):
+            print(f"  Backup: {result['backup_dir']}")
+        if result["errors"]:
+            print(f"\n  Errors ({len(result['errors'])}):", file=sys.stderr)
+            for e in result["errors"]:
+                print(f"    - {e}", file=sys.stderr)
+            sys.exit(1)
         return
 
 if __name__ == "__main__":

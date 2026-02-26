@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-02-26
+
+### Added
+- **Cross-platform hooks**: All 7 hook scripts now ship as both `.sh` (POSIX) and `.py` (Python)
+  in `scripts/hooks/`. Settings templates use `cloak hook <event>` CLI commands instead of `.sh`
+  file paths — works on Windows without Git Bash
+- **`cloak install`** command: Pure-Python installer replaces `install_claude.sh` as the primary
+  hook installation method. Supports `--profile`, `--method cli|copy|symlink`, `--policy`,
+  `--dry-run`, `--uninstall`. Cross-platform (no bash dependency)
+- **`cloak hooks-path`** command: Toolbox discovery contract — returns path to bundled hook scripts
+  in requested format (`--format sh|py|cli`). Enables AdservioToolbox to select OS-appropriate
+  hook scripts at install time
+- **`cloak doctor`** command: Installation health check reporting platform, Python version, CLI
+  availability, hook method, policy status, and vault state
+- **`python -m cloakmcp.hooks <event>`**: Fallback entrypoint when `cloak` is not in PATH
+- CLI-based settings templates (`hooks-cli.json`, `hooks-cli-hardened.json`) that reference
+  `cloak hook <event>` commands instead of `.sh` file paths
+
+### Changed
+- **hooks.py → hooks/ package**: `cloakmcp/hooks.py` converted to `cloakmcp/hooks/__init__.py` +
+  `__main__.py` package. All existing imports (`from cloakmcp.hooks import ...`) continue to work
+- **`_safe_chmod()` platform guard**: All 12 `os.chmod()` calls in `storage.py` and `dirpack.py`
+  now route through `_safe_chmod()` which is a no-op on Windows (NTFS uses ACLs, not POSIX bits)
+- **`_verify_permissions()` Windows guard**: Skipped on Windows to avoid spurious warnings from
+  POSIX mode bit checks on NTFS filesystems
+- **`_read_stdin_json()` / `_emit_json()` UTF-8 safety**: On Windows, reads stdin via
+  `sys.stdin.buffer` and writes stdout via `sys.stdout.buffer` to bypass codepage encoding issues
+- Default hook installation method changed from `.sh` wrappers to `cloak hook <event>` CLI commands
+
+### Fixed
+- Lazy import `from .dirpack import repack_file` in hooks module updated to `from ..dirpack`
+  after package migration (would have caused `ModuleNotFoundError` on repack-on-write)
+
 ## [0.11.0] - 2026-02-25
 
 ### Security

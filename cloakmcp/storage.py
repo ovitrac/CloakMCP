@@ -24,17 +24,32 @@ _SCRYPT_P = 1
 _SCRYPT_SALT_LEN = 32
 
 
+_IS_WINDOWS = sys.platform == "win32"
+
+
+def _safe_chmod(path: str, mode: int) -> None:
+    """Set file permissions. No-op on Windows (NTFS uses ACLs, not POSIX bits)."""
+    if _IS_WINDOWS:
+        return
+    try:
+        os.chmod(path, mode)
+    except PermissionError:
+        pass
+
+
 def _ensure_dirs() -> None:
     for d in (DEFAULT_HOME, VAULTS_DIR, KEYS_DIR, BACKUPS_DIR):
         os.makedirs(d, exist_ok=True)
-        try:
-            os.chmod(d, 0o700)
-        except PermissionError:
-            pass
+        _safe_chmod(d, 0o700)
 
 
 def _verify_permissions(path: str, expected: int) -> bool:
-    """Check file permissions, fix if wrong, return True if correction was needed."""
+    """Check file permissions, fix if wrong, return True if correction was needed.
+
+    Skipped on Windows where NTFS doesn't support POSIX mode bits.
+    """
+    if _IS_WINDOWS:
+        return False
     try:
         stat = os.stat(path)
         actual = stat.st_mode & 0o777
@@ -154,10 +169,7 @@ def _gen_keyfile(path: str, passphrase: Optional[str] = None) -> bytes:
         data = key
     with open(path, "wb") as f:
         f.write(data)
-    try:
-        os.chmod(path, 0o600)
-    except PermissionError:
-        pass
+    _safe_chmod(path, 0o600)
     return key
 
 
@@ -231,10 +243,7 @@ def wrap_keyfile(project_root: str, passphrase: Optional[str] = None) -> str:
 
     with open(path, "wb") as f:
         f.write(wrapped)
-    try:
-        os.chmod(path, 0o600)
-    except PermissionError:
-        pass
+    _safe_chmod(path, 0o600)
     return path
 
 
@@ -275,10 +284,7 @@ def unwrap_keyfile(project_root: str, passphrase: Optional[str] = None) -> str:
 
     with open(path, "wb") as f:
         f.write(raw_key)
-    try:
-        os.chmod(path, 0o600)
-    except PermissionError:
-        pass
+    _safe_chmod(path, 0o600)
     return path
 
 
@@ -367,10 +373,7 @@ class Vault:
         enc = self.fernet.encrypt(raw)
         with open(self.vault_path, "wb") as f:
             f.write(enc)
-        try:
-            os.chmod(self.vault_path, 0o600)
-        except PermissionError:
-            pass
+        _safe_chmod(self.vault_path, 0o600)
 
     def tag_for(self, secret: str, prefix: str) -> str:
         """Generate HMAC-based deterministic tag for a secret.
@@ -406,10 +409,7 @@ class Vault:
         enc = self.fernet.encrypt(raw)
         with open(output_path, "wb") as f:
             f.write(enc)
-        try:
-            os.chmod(output_path, 0o600)
-        except PermissionError:
-            pass
+        _safe_chmod(output_path, 0o600)
 
     def import_from_json(self, input_path: str) -> None:
         """Import vault contents from an encrypted JSON file."""

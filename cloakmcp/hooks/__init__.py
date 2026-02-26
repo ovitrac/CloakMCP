@@ -18,17 +18,17 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from .dirpack import (
+from ..dirpack import (
     pack_dir, unpack_dir, verify_unpack, build_manifest, compute_delta,
     load_ignores, create_backup, cleanup_backup, warn_legacy_backups,
     restore_from_backup,
     list_backups as _dirpack_list_backups,
 )
-from .filepack import pack_text, TAG_RE
-from .policy import Policy, find_policy, policy_sha256
-from .scanner import scan
-from .normalizer import normalize
-from .storage import Vault, BACKUPS_DIR, _project_slug
+from ..filepack import pack_text, TAG_RE
+from ..policy import Policy, find_policy, policy_sha256
+from ..scanner import scan
+from ..normalizer import normalize
+from ..storage import Vault, BACKUPS_DIR, _project_slug
 
 SESSION_STATE_FILE = ".cloak-session-state"
 SESSION_MANIFEST_FILE = ".cloak-session-manifest.json"
@@ -77,7 +77,11 @@ def _pinned_policy(project_dir: str) -> str:
 def _read_stdin_json() -> Optional[Dict[str, Any]]:
     """Read and parse JSON from stdin. Returns None on failure."""
     try:
-        raw = sys.stdin.read()
+        if sys.platform == "win32":
+            # Force UTF-8 on Windows (console defaults to codepage)
+            raw = sys.stdin.buffer.read().decode("utf-8")
+        else:
+            raw = sys.stdin.read()
         if not raw.strip():
             return None
         return json.loads(raw)
@@ -87,9 +91,13 @@ def _read_stdin_json() -> Optional[Dict[str, Any]]:
 
 def _emit_json(data: Dict[str, Any]) -> None:
     """Write JSON response to stdout."""
-    json.dump(data, sys.stdout, ensure_ascii=False)
-    sys.stdout.write("\n")
-    sys.stdout.flush()
+    out = json.dumps(data, ensure_ascii=False) + "\n"
+    if sys.platform == "win32":
+        sys.stdout.buffer.write(out.encode("utf-8"))
+        sys.stdout.buffer.flush()
+    else:
+        sys.stdout.write(out)
+        sys.stdout.flush()
 
 
 def _write_state(project_dir: str, policy_path: str, prefix: str,
@@ -908,7 +916,7 @@ def _repack_single_file(project_dir: str, file_path: str) -> None:
     Standalone: does not depend on session manifest. Validates path is inside
     project, loads policy, packs in-place, appends audit event.
     """
-    from .dirpack import repack_file
+    from ..dirpack import repack_file
 
     policy_path = _pinned_policy(project_dir)
     if not policy_path:

@@ -111,14 +111,15 @@ echo "some text" | cloak guard --policy examples/mcp_policy.yaml
 ### Install
 
 ```bash
-# Find bundled scripts (works after pip install or git clone)
-cloak scripts-path
+# Cross-platform (recommended)
+cloak install                          # default: secrets-only
+cloak install --profile hardened       # + Bash safety guard
+cloak install --dry-run                # preview only
+cloak install --uninstall              # remove hooks
 
-# Install hooks
-bash "$(cloak scripts-path)/install_claude.sh"                    # default: secrets-only
-bash "$(cloak scripts-path)/install_claude.sh" --profile hardened  # + Bash safety guard
-bash "$(cloak scripts-path)/install_claude.sh" --dry-run           # preview only
-bash "$(cloak scripts-path)/install_claude.sh" --uninstall         # remove hooks
+# Diagnostics
+cloak doctor                           # check installation health
+cloak hooks-path --format py           # print path to bundled .py hooks
 ```
 
 ### Hook lifecycle
@@ -135,10 +136,10 @@ bash "$(cloak scripts-path)/install_claude.sh" --uninstall         # remove hook
 ### Verify hooks are active
 
 ```bash
-ls .claude/hooks/                    # 5-6 scripts present?
-cat .claude/settings.local.json      # hooks configured?
-ls .cloak-session-state              # exists = session is packed
-tail -5 .cloak-session-audit.jsonl   # recent audit events
+cloak doctor                           # comprehensive check
+cat .claude/settings.local.json        # hooks configured?
+ls .cloak-session-state                # exists = session is packed
+tail -5 .cloak-session-audit.jsonl     # recent audit events
 ```
 
 ---
@@ -323,8 +324,8 @@ cloak verify --dir .
 ### Claude Code (automatic)
 
 ```bash
-bash "$(cloak scripts-path)/install_claude.sh"   # once
-claude                                            # hooks handle pack/unpack automatically
+cloak install   # once (cross-platform)
+claude          # hooks handle pack/unpack automatically
 ```
 
 ### Pre-commit secret scan
@@ -343,7 +344,7 @@ done
 |---------|-----|
 | `cloak: command not found` | `source .venv/bin/activate` |
 | No secrets detected | Check policy path and `.mcpignore` |
-| Hooks not firing | Run `bash "$(cloak scripts-path)/install_claude.sh"`, check `.claude/settings.local.json` |
+| Hooks not firing | Run `cloak install`, check `.claude/settings.local.json` |
 | `InvalidToken` on unpack | Vault key mismatch — check `~/.cloakmcp/keys/` |
 | Tags remain after unpack | `cloak verify --dir .` to find them |
 | Session stuck (packed) | `cloak recover --dir .` |
