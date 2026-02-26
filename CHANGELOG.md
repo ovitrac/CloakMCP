@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-02-26
+
+### Documentation
+- **THREAT_MODEL.md** rewritten for v0.12.0 (456 → 760 lines): 10 in-scope threats (T1–T10),
+  6 out-of-scope, 7 attack scenarios, platform-specific security section (POSIX vs Windows),
+  cryptographic guarantees (vault, tags, HKDF backups, scrypt Tier 1), security version history
+- **SECURITY.md**: added vault/key security section documenting Windows `0o600` limitation,
+  `_safe_chmod()` no-op behavior, compensating controls (Tier 1 + BitLocker + NTFS ACLs),
+  encrypted backup details, operating recommendations split (general / Windows / backup hygiene)
+
 ## [0.12.0] - 2026-02-26
 
 ### Added
@@ -436,7 +446,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/ovitrac/CloakMCP/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/ovitrac/CloakMCP/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/ovitrac/CloakMCP/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/ovitrac/CloakMCP/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ovitrac/CloakMCP/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/ovitrac/CloakMCP/compare/v0.9.1...v0.9.2

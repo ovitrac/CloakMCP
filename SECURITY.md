@@ -219,7 +219,89 @@ The `SessionStart` banner always reports the policy state:
 
 Use `cloak policy use --show` at any time to verify the active policy.
 
+## Vault and key security
+
+### Permission model
+
+CloakMCP protects vault keys and backup files with filesystem permissions:
+
+| Resource | POSIX (Linux/macOS) | Windows (NTFS) |
+|----------|-------------------|----------------|
+| `~/.cloakmcp/` | `0o700` (owner-only) | Inherits user profile ACLs |
+| `~/.cloakmcp/keys/*.key` | `0o600` (owner read/write) | **Not enforced** — see below |
+| `~/.cloakmcp/vaults/*.vault` | `0o600` (owner read/write) | **Not enforced** — see below |
+| `~/.cloakmcp/backups/*.enc` | `0o600` (owner read/write) | **Not enforced** — see below |
+
+### POSIX permission enforcement
+
+On Linux and macOS, CloakMCP calls `os.chmod()` to set strict permissions on every key and vault file. The `_verify_permissions()` function checks and auto-corrects permissions on every key access. If permissions were wrong (indicating external tampering or manual change), a warning is printed:
+
+```
+[CloakMCP] WARNING: Permissions on ~/.cloakmcp/keys/abc123.key were 0o644, corrected to 0o600.
+```
+
+### Windows limitation: `0o600` cannot be enforced
+
+**NTFS does not support POSIX permission bits.** The `st_mode` field returned by `os.stat()` on Windows returns arbitrary values unrelated to actual access control. Calling `os.chmod()` on Windows:
+- Can only toggle the **read-only** attribute
+- **Cannot** set owner-only access
+- **Cannot** restrict access to the current user
+
+CloakMCP handles this explicitly (v0.12.0):
+
+| Function | Behavior on Windows |
+|----------|-------------------|
+| `_safe_chmod(path, 0o600)` | **No-op** — returns immediately |
+| `_verify_permissions(path, 0o600)` | Returns `False` — skips all checks |
+| `_ensure_dirs()` | Creates directories without permission setting |
+
+This means that on Windows, vault keys rely on **NTFS ACL inheritance** from the user's home directory (`C:\Users\<username>\`) for access control. By default, this grants access only to the owner and `SYSTEM`, but this is not guaranteed on all Windows configurations (domain-joined machines, shared profiles, relaxed inheritance).
+
+### Compensating controls for Windows
+
+| Measure | Purpose | How |
+|---------|---------|-----|
+| **Tier 1 key wrapping** | Encrypt keys at rest with a passphrase | `CLOAK_PASSPHRASE=... cloak key wrap` |
+| **BitLocker** | Full-disk encryption | Windows Settings → Device encryption |
+| **Explicit NTFS ACLs** | Owner-only access on vault directory | `icacls %USERPROFILE%\.cloakmcp /inheritance:r /grant:r %USERNAME%:F` |
+| **Windows Credential Manager** | Avoid storing passphrase in env var | Store `CLOAK_PASSPHRASE` in Credential Manager |
+
+**Minimum recommended configuration for Windows**: Tier 1 key wrapping + BitLocker.
+
+For a comprehensive analysis, see [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — sections *Platform-Specific Security* and *T9. Cross-Platform Permission Gaps*.
+
+### Encrypted backups
+
+Since v0.10.0, backups are stored as encrypted `.enc` files using an HKDF-SHA256–derived subkey (separate from the vault encryption key). This ensures:
+- Backup contents are not readable with standard tools (`cat`, `grep`, `strings`)
+- Vault compromise does not expose backup contents (HKDF domain separation)
+- Backup files at `~/.cloakmcp/backups/` are encrypted at rest regardless of filesystem permissions
+
+Legacy plaintext backups can be migrated: `cloak backup migrate --apply`.
+
+### Passphrase-wrapped keys (Tier 1)
+
+Since v0.11.0, key files can be encrypted at rest using a passphrase-derived wrapping key:
+- **Algorithm**: scrypt (n=2^17, r=8, p=1 — 128 MiB memory cost, ~0.5s per derivation)
+- **Format**: `CLOAKKEY1\n<salt_hex>\n<fernet_encrypted_key>\n`
+- **Auto-detection**: CloakMCP detects raw (Tier 0) and wrapped (Tier 1) key formats transparently
+
+This is the **recommended defense-in-depth measure for Windows**, where filesystem permissions cannot isolate vault keys from other local users.
+
 ## Operating recommendations
+
+### General
 - Keep `keys/` outside version control, strict permissions.
 - Tune your policy before use; prefer `block`/`redact` for new detectors.
 - Run `mypy`, `black`, `bandit`, `pip-audit` locally before releases.
+
+### Windows-specific
+- Enable Tier 1 key wrapping: `export CLOAK_PASSPHRASE=<strong-passphrase> && cloak key wrap`.
+- Enable BitLocker for full-disk encryption.
+- Consider explicit NTFS ACLs: `icacls %USERPROFILE%\.cloakmcp /inheritance:r /grant:r %USERNAME%:F`.
+- Store `CLOAK_PASSPHRASE` in Windows Credential Manager rather than plaintext environment variables.
+
+### Backup hygiene
+- Run `cloak backup prune --ttl 30d --keep-last 10 --apply` periodically.
+- Migrate legacy plaintext backups: `cloak backup migrate --apply`.
+- Verify backup integrity: `cloak vault-export` creates independent encrypted exports.
