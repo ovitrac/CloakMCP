@@ -21,10 +21,13 @@ keys/
 # CloakMCP internals — the protector must not pack itself.
 # Source contains regex patterns, base62 alphabets, IP literals, and PEM
 # headers that look like secrets but are detection logic.
+# Demo contains intentional fake secrets for illustration — packing them
+# breaks shell script syntax and makes the demo non-functional.
 cloakmcp/
 tests/
 examples/
 docs/
+demo/
 api/
 deploy/
 .github/

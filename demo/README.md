@@ -28,9 +28,9 @@ That API key is now stored on someone else's servers. Forever.
 CloakMCP replaces secrets with opaque tags **before** the code leaves your machine. The AI sees the structure, the logic, the architecture — but **zero real credentials**:
 
 ```java
-private static final String API_KEY  = "TAG-e9fa47dae86f";
-private static final String DB_PASS  = "TAG-9a09048d700e";
-private static final String AWS_KEY  = "TAG-7c672fe48c71";
+private static final String API_KEY  = "https://ops.internal.company.local/webhooks/transfer";
+private static final String DB_PASS  = "payments_admin@internal.company";
+private static final String AWS_KEY  = "AKIAIOSFODNN7EXAMPLE";
 ```
 
 When you're done, one command restores everything. **Lossless round-trip. Zero secrets leaked.**
@@ -80,12 +80,12 @@ A realistic **Spring Boot banking microservice** (`BankTransferService.java`) wi
 
 | Secret Type | Count | Examples |
 |---|---|---|
-| API keys | 2 | `sk_live_51Jd9FAKE…`, `TAG-7c672fe48c71` |
+| API keys | 2 | `sk_live_51Jd9FAKE…`, `AKIAIOSFODNN7EXAMPLE` |
 | Passwords | 3 | DB, SMTP, webhook secrets |
 | SSH private key | 1 | Full PEM block |
 | JWT token | 1 | 3-part base64 token |
-| Internal URLs | 5 | `TAG-734aeebe57ed |
-| Email addresses | 4 | `TAG-9a09048d700e` |
+| Internal URLs | 5 | `https://ops.internal.company.local/…` |
+| Email addresses | 4 | `payments_admin@internal.company` |
 | IP addresses | 1 | `10.12.34.56` |
 
 **3 config files**: `BankTransferService.java`, `application.properties`, `application.yml`
@@ -188,10 +188,13 @@ cd demo && bash llm_demo.sh
 
 | Secret Type | Example | What the LLM Sees |
 |---|---|---|
-| AWS keys | `TAG-7c672fe48c71` | `TAG-7c672fe48c71` |
-| SSH private keys | `TAG-c333a0b9867a` |
-| URLs (internal) | `TAG-10a7117382c1 | `TAG-beb1d3fe0f7f |
-| Email addresses | `TAG-2c4d8d21ab44` | `TAG-9a09048d700e` |
+| AWS keys | `AKIAIOSFODNN7EXAMPLE` | `AKIAIOSFODNN7EXAMPLE` |
+| SSH private keys | `-----BEGIN OPENSSH PRIVATE KEY-----` | `-----BEGIN OPENSSH PRIVATE KEY-----\n" +
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\n" +
+            "c2gtZWQyNTUxOQAAACDFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAAAAA\n" +
+            "-----END OPENSSH PRIVATE KEY-----` |
+| URLs (internal) | `https://api.internal.company.local/v2` | `https://ops.internal.company.local/webhooks/transfer` |
+| Email addresses | `admin@internal.company` | `payments_admin@internal.company` |
 | JWT tokens | `eyJhbGciOi...` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcDEF123_fake_payload.abcDEF123_fake_sig` |
 | IP addresses | `10.12.34.56` | `10.12.34` |
 | High-entropy blobs | `wJalrXUtnFEMI/K7MDENG...` | `TAG-4bbfdab64f59` |

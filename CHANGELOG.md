@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-02-26
+
+### Fixed
+- **Demo files restored from v0.5.0 originals**: All 5 demo source files and 2 demo scripts had
+  been silently packed by CloakMCP during a pre-v0.9.2 session (before self-packing prevention).
+  Tags replaced real fake secrets, breaking sed patterns in `mcp_demo.sh` (syntax error at line
+  319) and making `cloak pack` find 0 secrets. Restored from commit `d90a932`
+- **`.mcpignore`: added `demo/` exclusion**: The demo directory contains intentional fake secrets
+  for illustration. Packing it corrupts shell scripts, README examples, and makes all 4 demos
+  non-functional. Now excluded alongside `cloakmcp/`, `tests/`, `examples/`, `docs/`
+
 ## [0.12.1] - 2026-02-26
 
 ### Documentation
@@ -446,7 +457,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/ovitrac/CloakMCP/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/ovitrac/CloakMCP/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/ovitrac/CloakMCP/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ovitrac/CloakMCP/compare/v0.10.1...v0.11.0
