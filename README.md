@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.12.2-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Version](https://img.shields.io/badge/version-0.12.3-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
 [![Tests](https://img.shields.io/badge/tests-382%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
@@ -428,7 +428,7 @@ sequenceDiagram
 │   └── <project-slug>.vault      # Encrypted JSON mapping {TAG → secret}
 └── backups/
     └── <project-slug>/           # Pre-redaction backups (auto-cleaned on session end)
-        └── <timestamp>/          # Timestamped snapshot (outside project tree)
+        └── <timestamp>.enc       # Encrypted backup (Fernet + HKDF-derived key)
 ```
 
 Backups can be restored with `cloak restore --from-backup --backup-id <timestamp> --force`.
@@ -678,14 +678,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (282 passing)
+# Run all tests (382 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 282 tests across 7 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, and enterprise policy tests.
+**Test suite**: 382 tests across 10 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, enterprise policy tests, backup encryption, key wrapping, backup lifecycle, and cross-platform hooks.
 
 ---
 
@@ -693,29 +693,37 @@ pytest --cov=cloakmcp --cov-report=term
 
 ```
 CloakMCP/
-├── cloakmcp/                      # Main package (15 modules, ~3,800 LOC)
+├── cloakmcp/                      # Main package (16 modules, ~4,200 LOC)
 │   ├── __init__.py
 │   ├── actions.py                 # Action engine (redact, pseudonymize, etc.)
 │   ├── audit.py                   # Audit logging
-│   ├── cli.py                     # CLI entry point (scan, sanitize, pack, unpack, hook)
+│   ├── cli.py                     # CLI entry point (scan, sanitize, pack, unpack, hook, install)
 │   ├── dirpack.py                 # Directory pack/unpack walker
 │   ├── fastmcp_server.py          # FastMCP server (cloak serve, 6 tools)
 │   ├── filepack.py                # Text-level pack/unpack with overlap dedup
-│   ├── hooks.py                   # Claude Code hooks (session-start/end, guard-write)
+│   ├── hooks/                     # Claude Code hooks package (v0.12.0)
+│   │   ├── __init__.py            # Hook handlers (session, guard-write, prompt-guard, etc.)
+│   │   └── __main__.py            # python -m cloakmcp.hooks entrypoint
+│   ├── installer.py               # Cross-platform hook installer (cloak install)
 │   ├── mcp_server.py              # MCP tool server (JSON-RPC 2.0 over stdio)
 │   ├── normalizer.py              # Text normalization
 │   ├── policy.py                  # Policy engine (YAML, inheritance, merging)
 │   ├── scanner.py                 # Secret detectors (regex, entropy, IP, URL, email)
 │   ├── server.py                  # FastAPI REST server (localhost)
-│   ├── storage.py                 # Vault encryption (Fernet AES-128)
+│   ├── storage.py                 # Vault encryption (Fernet AES-128, scrypt key wrapping)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (282 tests, 7 files)
+├── tests/                         # Test suite (382 tests, 10 files)
+│   ├── conftest.py                # Autouse fixture for ~/.cloakmcp/ artifact cleanup
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
 │   ├── test_filepack.py           # Pack/unpack round-trip tests
 │   ├── test_hooks.py              # Claude Code hook tests (session, guard, repack)
 │   ├── test_mcp_server.py         # MCP server protocol tests
 │   ├── test_policy_enterprise.py  # Enterprise policy profile tests
+│   ├── test_backup_encryption.py  # HKDF backup encryption tests
+│   ├── test_key_wrapping.py       # Tier 1 scrypt key wrapping tests
+│   ├── test_backup_lifecycle.py   # Backup migrate/prune tests
+│   ├── test_cross_platform_hooks.py # Cross-platform hook installer tests
 │   └── test_smoke.py              # Basic smoke test
 ├── docs/                          # Developer documentation
 │   ├── QUICKSTART.md              # First-time setup, FAQ, compatibility
@@ -723,11 +731,11 @@ CloakMCP/
 │   ├── SERVER.md                  # Server configuration and security model
 │   ├── VSCODE_MANUAL.md           # Complete VS Code integration guide
 │   ├── GROUP_POLICY_IMPLEMENTATION.md  # Group policy inheritance details
-│   └── THREAT_MODEL.md            # Threat model and security analysis
-│   └── scripts/                   # Bundled installer + hooks (included in PyPI wheel)
-│       ├── install_claude.sh      # Idempotent hook installer (--profile, --dry-run)
-│       ├── hooks/                 # Hook shell scripts (7 tracked scripts)
-│       └── settings/              # Settings templates (hooks.json, hooks-hardened.json)
+│   └── THREAT_MODEL.md            # Threat model and security analysis (v0.12.0)
+├── cloakmcp/scripts/              # Bundled installer + hooks (included in PyPI wheel)
+│   ├── install_claude.sh          # Legacy bash installer (use cloak install instead)
+│   ├── hooks/                     # 7 .sh + 7 .py hook scripts (cross-platform)
+│   └── settings/                  # Settings templates (hooks-cli.json, hooks-hardened.json, etc.)
 ├── demo/                          # Live demo (Spring Boot banking service)
 │   ├── llm_demo.sh                # LLM demo (Ollama / Claude)
 │   ├── mcp_demo.sh                # MCP protocol + hook lifecycle demo
@@ -749,7 +757,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.10.1)
+├── pyproject.toml                 # Package metadata (v0.12.3)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -806,7 +814,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.10.1 — Test artifact cleanup (v0.10.0: encrypted backups at rest, v0.9.0: G1-G5)
+**Latest**: v0.12.3 — README sync (v0.12.2: demo fix, v0.12.0: cross-platform hooks, v0.11.0: key hardening)
 
 ---
 
