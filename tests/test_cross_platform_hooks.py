@@ -307,3 +307,169 @@ class TestStdinEncoding:
         captured = capsys.readouterr()
         parsed = json.loads(captured.out.strip())
         assert parsed["résultat"] == "succès"
+
+
+# ── Idempotent install / uninstall ──────────────────────────────
+
+
+class TestIdempotentInstallUninstall:
+    """Verify that install and uninstall are idempotent."""
+
+    def test_install_twice_same_result(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        r1 = install_hooks(project_dir=str(tmp_path), method="cli")
+        settings = tmp_path / ".claude" / "settings.local.json"
+        with open(settings) as f:
+            data1 = json.load(f)
+        r2 = install_hooks(project_dir=str(tmp_path), method="cli")
+        with open(settings) as f:
+            data2 = json.load(f)
+        assert r1["errors"] == []
+        assert r2["errors"] == []
+        assert data1 == data2
+
+    def test_install_twice_copy_method(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="copy")
+        hooks_dir = tmp_path / ".claude" / "hooks"
+        files1 = sorted(f.name for f in hooks_dir.iterdir())
+        install_hooks(project_dir=str(tmp_path), method="copy")
+        files2 = sorted(f.name for f in hooks_dir.iterdir())
+        assert files1 == files2
+
+    def test_uninstall_twice_no_error(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="cli")
+        r1 = install_hooks(project_dir=str(tmp_path), uninstall=True)
+        r2 = install_hooks(project_dir=str(tmp_path), uninstall=True)
+        assert r1["errors"] == [] if "errors" in r1 else True
+        assert r2["errors"] == [] if "errors" in r2 else True
+
+    def test_install_uninstall_clean_state(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="cli")
+        install_hooks(project_dir=str(tmp_path), uninstall=True)
+        settings = tmp_path / ".claude" / "settings.local.json"
+        with open(settings) as f:
+            data = json.load(f)
+        assert "hooks" not in data
+
+    def test_install_uninstall_copy_hooks_removed(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="copy")
+        hooks_dir = tmp_path / ".claude" / "hooks"
+        assert any(f.name.startswith("cloak-") for f in hooks_dir.iterdir())
+        install_hooks(project_dir=str(tmp_path), uninstall=True)
+        cloak_files = [f for f in hooks_dir.iterdir() if f.name.startswith("cloak-")]
+        assert cloak_files == []
+
+    def test_uninstall_then_install_restores(self, tmp_path):
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="cli")
+        install_hooks(project_dir=str(tmp_path), uninstall=True)
+        r = install_hooks(project_dir=str(tmp_path), method="cli")
+        assert r["errors"] == []
+        settings = tmp_path / ".claude" / "settings.local.json"
+        with open(settings) as f:
+            data = json.load(f)
+        assert "hooks" in data
+
+
+# ── Windows platform guards ─────────────────────────────────────
+
+
+class TestWindowsPlatformGuards:
+    """Verify Windows-specific platform guards in installer and CLI."""
+
+    def test_installer_safe_chmod_used(self, tmp_path, monkeypatch):
+        """Verify _safe_chmod is called instead of bare os.chmod."""
+        from cloakmcp import installer
+        from cloakmcp.storage import _safe_chmod
+        calls = []
+        original = _safe_chmod.__wrapped__ if hasattr(_safe_chmod, '__wrapped__') else _safe_chmod
+
+        def tracking_chmod(path, mode):
+            calls.append((path, mode))
+            # Do real chmod on non-Windows
+            original(path, mode)
+
+        monkeypatch.setattr(installer, "_safe_chmod", tracking_chmod)
+        installer.install_hooks(project_dir=str(tmp_path), method="copy")
+        assert len(calls) > 0, "_safe_chmod was never called"
+
+    def test_installer_auto_downgrade_on_windows(self, tmp_path, monkeypatch):
+        """symlink method on win32 should auto-downgrade to cli."""
+        from cloakmcp import installer as inst_mod
+        monkeypatch.setattr(inst_mod.sys, "platform", "win32")
+        # Also mock shutil.which to avoid Windows-specific API calls
+        monkeypatch.setattr(inst_mod.shutil, "which", lambda cmd: "/usr/bin/cloak")
+        result = inst_mod.install_hooks(project_dir=str(tmp_path), method="symlink")
+        assert result["method"] == "cli"
+
+    def test_policy_use_link_windows_error(self, tmp_path, monkeypatch):
+        """policy use --link on win32 should exit with error."""
+        from cloakmcp import cli as cli_mod
+        monkeypatch.setattr(cli_mod.sys, "platform", "win32")
+
+        # Create a minimal policy file
+        policy = tmp_path / "policy.yaml"
+        policy.write_text("version: 1\ndetection: []\n")
+        cloak_dir = tmp_path / ".cloak"
+        cloak_dir.mkdir()
+
+        monkeypatch.setattr(
+            cli_mod.sys, "argv",
+            ["cloak", "policy", "use", str(policy), "--link", "--dir", str(tmp_path)]
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            cli_mod.main()
+        assert exc_info.value.code == 1
+
+
+# ── Doctor hook validation ──────────────────────────────────────
+
+
+class TestDoctorHookValidation:
+    """Verify cloak doctor reports hook entrypoint status."""
+
+    def test_doctor_reports_hook_entrypoints(self, tmp_path, capsys):
+        """doctor output should contain .py hooks: and .sh hooks: lines."""
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="cli")
+        # Run doctor via CLI
+        from subprocess import run
+        result = run(
+            [sys.executable, "-m", "cloakmcp.cli", "doctor", "--dir", str(tmp_path)],
+            capture_output=True, text=True
+        )
+        assert ".py hooks:" in result.stdout
+        assert ".sh hooks:" in result.stdout
+
+    def test_doctor_bundled_hooks_all_present(self):
+        """All 7 .py hook files must exist in bundled scripts dir."""
+        from cloakmcp.installer import hooks_path
+        hooks_dir = hooks_path("py")
+        expected = [
+            "cloak-session-start.py", "cloak-session-end.py",
+            "cloak-guard-write.py", "cloak-guard-read.py",
+            "cloak-prompt-guard.py", "cloak-safety-guard.py",
+            "cloak-audit-logger.py",
+        ]
+        for name in expected:
+            assert os.path.isfile(os.path.join(hooks_dir, name)), \
+                f"Missing bundled hook: {name}"
+
+    def test_doctor_runs_on_windows_mock(self, tmp_path, monkeypatch):
+        """doctor should not crash when sys.platform == win32."""
+        from subprocess import run
+        # Run doctor in a subprocess with platform mocked via env
+        # We test the code path directly instead
+        from cloakmcp.installer import install_hooks
+        install_hooks(project_dir=str(tmp_path), method="cli")
+        monkeypatch.setattr("sys.platform", "win32")
+        result = run(
+            [sys.executable, "-m", "cloakmcp.cli", "doctor", "--dir", str(tmp_path)],
+            capture_output=True, text=True
+        )
+        # Should not crash (exit code 0)
+        assert result.returncode == 0

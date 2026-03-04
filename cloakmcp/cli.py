@@ -574,6 +574,11 @@ def main() -> None:
 
             # Copy or symlink
             if getattr(args, "link", False):
+                if sys.platform == "win32":
+                    print("Error: Symlinks require Developer Mode or admin on Windows. "
+                          "Use 'cloak policy use' without --link instead.",
+                          file=sys.stderr)
+                    sys.exit(1)
                 if os.path.exists(target):
                     os.remove(target)
                 os.symlink(source, target)
@@ -870,6 +875,36 @@ def main() -> None:
         py_count = len([f for f in os.listdir(hooks_dir_sh)
                         if f.endswith(".py")]) if os.path.isdir(hooks_dir_sh) else 0
         print(f"  Hook scripts:   {sh_count} .sh + {py_count} .py in {hooks_dir_sh}")
+
+        # Hook entrypoint validation
+        expected_hooks = [
+            "cloak-session-start", "cloak-session-end",
+            "cloak-guard-write", "cloak-guard-read",
+            "cloak-prompt-guard", "cloak-safety-guard",
+            "cloak-audit-logger",
+        ]
+        py_present = []
+        sh_present = []
+        for name in expected_hooks:
+            py_path = os.path.join(hooks_dir_sh, f"{name}.py")
+            sh_path = os.path.join(hooks_dir_sh, f"{name}.sh")
+            if os.path.isfile(py_path):
+                py_present.append(name)
+            if os.path.isfile(sh_path):
+                sh_present.append(name)
+        print(f"  .py hooks:      {len(py_present)}/{len(expected_hooks)}")
+        if sys.platform != "win32":
+            sh_exec = sum(
+                1 for name in sh_present
+                if os.access(os.path.join(hooks_dir_sh, f"{name}.sh"), os.X_OK)
+            )
+            print(f"  .sh hooks:      {len(sh_present)}/{len(expected_hooks)} "
+                  f"({sh_exec} executable)")
+        else:
+            print(f"  .sh hooks:      {len(sh_present)}/{len(expected_hooks)}")
+            if len(py_present) < len(expected_hooks):
+                missing = set(expected_hooks) - set(py_present)
+                print(f"  [WARN] Missing .py hooks on Windows: {', '.join(sorted(missing))}")
 
         # Installed hook method
         if os.path.isfile(settings_file):

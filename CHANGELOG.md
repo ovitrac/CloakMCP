@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-04
+
+### Fixed
+- **`installer.py`: bare `os.chmod()` on Windows** (P1): replaced with `_safe_chmod()` which is
+  a no-op on Windows (NTFS uses ACLs). Also added defense-in-depth guard on `os.symlink()` in the
+  `method == "symlink"` block — auto-falls back to `shutil.copy2()` on `win32`
+- **`cli.py`: `os.symlink()` in `policy use --link`** (P2): added `sys.platform == "win32"` check
+  that prints a clear error message and exits with code 1 instead of crashing with `OSError`
+
+### Changed
+- **`cloak doctor` enhanced** (P5): now validates all 7 hook entrypoints (`.py` and `.sh`),
+  reports counts, checks executable bit on Unix, and warns about missing `.py` hooks on Windows
+
+### Documentation
+- **`docs/QUICKSTART.md`** refreshed (P3): v0.6.0 → v0.13.0, removed legacy `keys/` + `openssl` +
+  `chmod` setup, added Windows/PowerShell install block, added `cloak doctor` to verification,
+  added `CLOAK_PASSPHRASE` and `CLOAK_FAIL_CLOSED` env vars, added Windows troubleshooting row
+- **`docs/QUICKREF.md`** refreshed (P4): v0.6.0 → v0.13.0, removed legacy `openssl`/`chmod`/`keys/`
+  setup, added missing CLI commands (`doctor`, `hooks-path`, `key wrap/unwrap`, `backup prune/migrate`,
+  `install --uninstall`, `policy use/reload`, `serve`), added `CLOAK_FAIL_CLOSED` and
+  `CLOAK_PASSPHRASE` env vars, updated test count to 394+
+
+### Tests
+- 12 new tests in `tests/test_cross_platform_hooks.py`:
+  - `TestIdempotentInstallUninstall` (6 tests): install twice, uninstall twice, round-trip
+  - `TestWindowsPlatformGuards` (3 tests): `_safe_chmod` usage, auto-downgrade, `--link` error
+  - `TestDoctorHookValidation` (3 tests): hook entrypoint reporting, bundled hooks present,
+    Windows mock
+
 ## [0.12.3] - 2026-03-02
 
 ### Changed
@@ -464,7 +493,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/ovitrac/CloakMCP/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/ovitrac/CloakMCP/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/ovitrac/CloakMCP/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/ovitrac/CloakMCP/compare/v0.12.0...v0.12.1

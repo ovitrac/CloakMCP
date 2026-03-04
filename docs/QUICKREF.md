@@ -1,6 +1,6 @@
 # CloakMCP Quick Reference
 
-**Version**: 0.6.0 | **Cheat sheet for daily use**
+**Version**: 0.13.0 | **Cheat sheet for daily use**
 
 ---
 
@@ -8,8 +8,10 @@
 
 ```bash
 pip install -e .
-mkdir -p keys audit && openssl rand -hex 32 > keys/mcp_hmac_key && chmod 600 keys/*
+cloak doctor              # verify installation health
 ```
+
+> Vault keys are auto-generated on first use — no manual key setup required.
 
 ---
 
@@ -63,6 +65,16 @@ cloak policy validate --policy examples/mcp_policy.yaml
 # Show merged policy after inheritance resolution
 cloak policy show --policy examples/mcp_policy.yaml --format yaml
 cloak policy show --policy examples/mcp_policy.yaml --format json
+
+# Set per-project policy (persists in .cloak/policy.yaml)
+cloak policy use examples/mcp_policy.yaml
+cloak policy use --show          # display active policy
+cloak policy use --clear         # remove per-project policy
+cloak policy use POL --link      # symlink instead of copy (Unix only)
+cloak policy use POL --force     # allow policy downgrade
+
+# Reload policy mid-session (re-resolve + update pinned hash)
+cloak policy reload --dir .
 ```
 
 ### Vault management
@@ -78,21 +90,85 @@ cloak vault-export --dir . --output vault-backup.enc
 cloak vault-import --backup vault-backup.enc --dir .
 ```
 
-### Session recovery
+### Key management
 
 ```bash
+# Wrap key with passphrase (Tier 0 → Tier 1, requires CLOAK_PASSPHRASE)
+cloak key wrap --dir .
+
+# Unwrap key back to raw format (Tier 1 → Tier 0)
+cloak key unwrap --dir .
+```
+
+### Backup management
+
+```bash
+# Encrypt legacy plaintext backups → .enc files
+cloak backup migrate --dir .                  # dry-run (default)
+cloak backup migrate --dir . --apply          # execute migration
+cloak backup migrate --dir . --quarantine     # move originals instead of deleting
+
+# Prune old backups
+cloak backup prune --dir . --ttl 30d --keep-last 10       # dry-run (default)
+cloak backup prune --dir . --ttl 30d --keep-last 10 --apply
+cloak backup prune --dir . --include-legacy                # include plaintext dirs
+```
+
+### Session management
+
+```bash
+# Session diagnostics (state, manifest, delta, vault, tags, backups, audit)
+cloak status --dir .
+cloak status --dir . --json                   # machine-readable output
+
+# Restore secrets from vault (default) or backup
+cloak restore --dir .
+cloak restore --dir . --from-backup --force   # restore from backup
+
 # Recover from crashed session (stale .cloak-session-state)
 cloak recover --dir .
+```
+
+### Installation and diagnostics
+
+```bash
+# Cross-platform hook installer
+cloak install                          # default: secrets-only, cli method
+cloak install --profile hardened       # + Bash safety guard + read guard
+cloak install --method copy            # copy .sh scripts (Unix only)
+cloak install --dry-run                # preview only
+cloak install --uninstall              # remove hooks
+
+# Installation health check
+cloak doctor                           # platform, hook method, policy, vault state
+
+# Toolbox discovery contract
+cloak hooks-path --format py           # print path to bundled .py hooks
+cloak hooks-path --format sh           # print path to bundled .sh hooks
+cloak hooks-path --format cli          # returns "cloak hook"
 ```
 
 ### Pipes and guards
 
 ```bash
 # Sanitize from stdin (for pipes)
-echo "secret: AKIAABCDEFGHIJKLMNOP" | cloak sanitize-stdin --policy examples/mcp_policy.yaml
+echo "secret: MY_AWS_KEY_HERE" | cloak sanitize-stdin --policy examples/mcp_policy.yaml
 
 # Guard: exit 1 if stdin contains secrets (for pre-commit)
 echo "some text" | cloak guard --policy examples/mcp_policy.yaml
+```
+
+### MCP server
+
+```bash
+# FastMCP server (stdio, default)
+cloak serve
+
+# FastMCP server (SSE transport)
+cloak serve --transport sse --port 8766
+
+# Validate configuration and exit
+cloak serve --check
 ```
 
 ---
@@ -130,6 +206,7 @@ cloak hooks-path --format py           # print path to bundled .py hooks
 | SessionEnd | `claude` exits | `cloak unpack`, verifies integrity, computes delta |
 | UserPromptSubmit | Every prompt | Warns if prompt contains raw secrets |
 | PreToolUse (Write/Edit) | Before file writes | Blocks writes containing secrets |
+| PreToolUse (Read/Grep/Glob) | Before file reads | Blocks access to sensitive paths (hardened only) |
 | PreToolUse (Bash) | Before shell commands | Blocks dangerous commands (hardened only) |
 | PostToolUse | After tool runs | Audit log + optional repack |
 
@@ -154,6 +231,8 @@ tail -5 .cloak-session-audit.jsonl     # recent audit events
 | `CLOAK_PROMPT_GUARD` | on | `off` = disable prompt guard |
 | `CLOAK_REPACK_ON_WRITE` | off | `1` = auto-repack after Write/Edit |
 | `CLOAK_AUDIT_TOOLS` | off | `1` = log all tool usage |
+| `CLOAK_FAIL_CLOSED` | off | `1` = deny writes and refuse sessions when no policy found |
+| `CLOAK_PASSPHRASE` | *(unset)* | Passphrase for Tier 1 key wrapping (scrypt) |
 
 ---
 
@@ -227,8 +306,11 @@ detection:
 ~/.cloakmcp/
 ├── keys/
 │   └── <slug>.key          # Fernet encryption key (chmod 600)
-└── vaults/
-    └── <slug>.vault        # Encrypted JSON: {TAG -> secret}
+├── vaults/
+│   └── <slug>.vault        # Encrypted JSON: {TAG -> secret}
+└── backups/
+    └── <slug>/
+        └── <timestamp>.enc # Encrypted backup (Fernet + HKDF-derived key)
 ```
 
 **Slug**: first 16 chars of `SHA-256(absolute_project_path)`
@@ -349,6 +431,7 @@ done
 | Tags remain after unpack | `cloak verify --dir .` to find them |
 | Session stuck (packed) | `cloak recover --dir .` |
 | Double-tagging | Safe since v0.6.0 (idempotency guard) |
+| Windows symlink errors | Use `--method cli` (default) or `--method copy` |
 
 ---
 
@@ -356,7 +439,7 @@ done
 
 ```bash
 pip install -e ".[test]"     # install test dependencies
-pytest -v                     # run all tests (214+)
+pytest -v                     # run all tests (394+)
 pytest --cov=cloakmcp         # with coverage
 ```
 
@@ -374,4 +457,4 @@ pytest --cov=cloakmcp         # with coverage
 
 ---
 
-*CloakMCP v0.6.0 — Olivier Vitrac, Adservio Innovation Lab*
+*CloakMCP v0.13.0 — Olivier Vitrac, Adservio Innovation Lab*

@@ -1,6 +1,6 @@
 # CloakMCP Quickstart
 
-**Version**: 0.6.0 | **Time to first pack: ~5 minutes**
+**Version**: 0.13.0 | **Time to first pack: ~5 minutes**
 
 CloakMCP replaces secrets in your code with opaque tags before anything leaves your machine. LLMs see `TAG-2f1a8e3c9b12` instead of your actual API keys, tokens, and credentials. You get them back with one command.
 
@@ -8,16 +8,23 @@ CloakMCP replaces secrets in your code with opaque tags before anything leaves y
 
 ## 1. Install and Verify
 
+### Linux / macOS
+
 ```bash
 git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-
-# Generate HMAC key (required for deterministic tags)
-mkdir -p keys audit
-openssl rand -hex 32 > keys/mcp_hmac_key
-chmod 600 keys/*
 ```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/ovitrac/CloakMCP.git; cd CloakMCP
+python -m venv .venv; .venv\Scripts\Activate.ps1
+pip install -e .
+```
+
+> **Note:** Vault keys are auto-generated on first use — no manual key setup required.
 
 **Verify it works:**
 
@@ -26,6 +33,12 @@ cloak scan --policy examples/mcp_policy.yaml --input examples/client_sanitize.py
 ```
 
 You should see detection output listing found secrets (emails, tokens). If you see `cloak: command not found`, your venv is not activated.
+
+**Check installation health:**
+
+```bash
+cloak doctor
+```
 
 ---
 
@@ -84,16 +97,10 @@ CloakMCP works with **any** LLM. The only difference is automation:
 ```bash
 cd /path/to/your-project   # must have CloakMCP installed
 
-# Cross-platform (recommended):
+# Cross-platform (recommended — uses `cloak hook <event>` CLI commands):
 cloak install
 
-# Legacy (Unix only):
-bash "$(cloak scripts-path)/install_claude.sh"
-```
-
-This installs the `secrets-only` profile (default). For the hardened profile which also blocks dangerous shell commands:
-
-```bash
+# With hardened profile (blocks dangerous shell commands + read guard):
 cloak install --profile hardened
 ```
 
@@ -105,16 +112,25 @@ cloak install --dry-run
 
 ### What the installer creates
 
+With the default `--method cli` (cross-platform, no `.sh` files copied):
+
 ```
 your-project/
 └── .claude/
-    ├── hooks/                      # 6 shell scripts
-    │   ├── cloak-session-start.sh  # Packs on session start
-    │   ├── cloak-session-end.sh    # Unpacks on session end
-    │   ├── cloak-prompt-guard.sh   # Warns if you paste secrets in prompts
-    │   ├── cloak-guard-write.sh    # Blocks writes containing secrets
-    │   ├── cloak-safety-guard.sh   # Blocks dangerous commands (hardened only)
-    │   └── cloak-audit-logger.sh   # Logs tool usage
+    └── settings.local.json         # Hook configuration (cloak hook <event> commands)
+```
+
+With `--method copy` (Unix only, copies `.sh` scripts):
+
+```
+your-project/
+└── .claude/
+    ├── hooks/                      # 5-7 shell scripts
+    │   ├── cloak-session-start.sh
+    │   ├── cloak-session-end.sh
+    │   ├── cloak-prompt-guard.sh
+    │   ├── cloak-guard-write.sh
+    │   └── cloak-audit-logger.sh
     └── settings.local.json         # Hook configuration
 ```
 
@@ -130,8 +146,8 @@ When you run `claude` in a CloakMCP-enabled project:
 ### Verify hooks are active
 
 ```bash
-# Check hook files exist
-ls .claude/hooks/
+# Comprehensive health check
+cloak doctor
 
 # Check settings are configured
 cat .claude/settings.local.json | python3 -m json.tool
@@ -162,8 +178,8 @@ The `.mcp.json` file at project root configures this automatically:
   "mcpServers": {
     "cloakmcp": {
       "type": "stdio",
-      "command": "cloak-mcp-server",
-      "env": { "CLOAK_POLICY": "examples/mcp_policy.yaml" }
+      "command": "cloak",
+      "args": ["serve"]
     }
   }
 }
@@ -172,6 +188,8 @@ The `.mcp.json` file at project root configures this automatically:
 **Available MCP tools**: `cloak_scan_text`, `cloak_sanitize_text`, `cloak_pack_dir`, `cloak_unpack_dir`, `cloak_policy_show`, `cloak_vault_stats`
 
 No configuration needed — Claude Code discovers `.mcp.json` automatically.
+
+> **Note:** `cloak serve` requires the optional MCP dependency: `pip install cloakmcp[mcp]`.
 
 ---
 
@@ -185,6 +203,8 @@ No configuration needed — Claude Code discovers `.mcp.json` automatically.
 | `CLOAK_PROMPT_GUARD` | *(on)* | Set to `off` to disable prompt secret detection |
 | `CLOAK_REPACK_ON_WRITE` | *(off)* | Set to `1`: auto-repack after each Write/Edit |
 | `CLOAK_AUDIT_TOOLS` | *(off)* | Set to `1`: log all tool invocations to audit |
+| `CLOAK_FAIL_CLOSED` | *(off)* | Set to `1`: deny writes and refuse sessions when no policy found |
+| `CLOAK_PASSPHRASE` | *(unset)* | Passphrase for Tier 1 key wrapping (scrypt-based encryption at rest) |
 
 ---
 
@@ -203,8 +223,8 @@ Switch profiles:
 # CLI
 cloak pack --policy examples/mcp_policy_enterprise.yaml --dir .
 
-# Hooks (set in environment or .claude/hooks/cloak-session-start.sh)
-export CLOAK_POLICY=examples/mcp_policy_enterprise.yaml
+# Per-project (persists in .cloak/policy.yaml)
+cloak policy use examples/mcp_policy_enterprise.yaml
 ```
 
 ---
@@ -292,6 +312,7 @@ This detects stale `.cloak-session-state` files and runs unpack to restore secre
 | Session stuck (packed) | Crash without SessionEnd | `cloak recover --dir .` |
 | Double-tagging | Pack ran twice | Safe since v0.6.0 — idempotency guard prevents re-packing |
 | Prompt guard too noisy | False positives | `export CLOAK_PROMPT_GUARD=off` or tune policy |
+| Windows: symlink errors | Requires admin/Developer Mode | Use `--method cli` (default) or `--method copy` instead |
 
 ---
 
@@ -309,4 +330,4 @@ This detects stale `.cloak-session-state` files and runs unpack to restore secre
 
 ---
 
-*CloakMCP v0.6.0 — Olivier Vitrac, Adservio Innovation Lab*
+*CloakMCP v0.13.0 — Olivier Vitrac, Adservio Innovation Lab*

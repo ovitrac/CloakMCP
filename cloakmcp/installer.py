@@ -14,6 +14,8 @@ from datetime import datetime
 from importlib.resources import files as pkg_files
 from typing import Dict, List, Optional
 
+from .storage import _safe_chmod
+
 
 def _scripts_dir() -> str:
     """Path to bundled scripts directory."""
@@ -144,12 +146,18 @@ def install_hooks(
                 continue
             if not dry_run:
                 if method == "symlink":
-                    if os.path.exists(dst):
-                        os.remove(dst)
-                    os.symlink(src, dst)
+                    if sys.platform == "win32":
+                        # Symlinks require Developer Mode or admin on Windows;
+                        # fall back to copy for safety (direct API callers may
+                        # bypass the preflight check at the top of install_hooks).
+                        shutil.copy2(src, dst)
+                    else:
+                        if os.path.exists(dst):
+                            os.remove(dst)
+                        os.symlink(src, dst)
                 else:
                     shutil.copy2(src, dst)
-                os.chmod(dst, 0o755)
+                _safe_chmod(dst, 0o755)
             result["hooks_installed"].append(f"{name}{ext}")
     else:
         # CLI method: no files to copy, hooks run via `cloak hook <event>`
