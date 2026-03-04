@@ -1,13 +1,13 @@
 # CloakMCP Quick Reference
 
-**Version**: 0.13.0 | **Cheat sheet for daily use**
+**Version**: 0.13.1 | **Cheat sheet for daily use**
 
 ---
 
 ## Setup (first time only)
 
 ```bash
-pip install -e .
+pipx install cloakmcp     # or: pip install cloakmcp
 cloak doctor              # verify installation health
 ```
 
@@ -424,7 +424,7 @@ done
 
 | Problem | Fix |
 |---------|-----|
-| `cloak: command not found` | `source .venv/bin/activate` |
+| `cloak: command not found` | `pipx install cloakmcp` or `source .venv/bin/activate` |
 | No secrets detected | Check policy path and `.mcpignore` |
 | Hooks not firing | Run `cloak install`, check `.claude/settings.local.json` |
 | `InvalidToken` on unpack | Vault key mismatch — check `~/.cloakmcp/keys/` |
@@ -439,7 +439,7 @@ done
 
 ```bash
 pip install -e ".[test]"     # install test dependencies
-pytest -v                     # run all tests (394+)
+pytest -v                     # run all tests (401)
 pytest --cov=cloakmcp         # with coverage
 ```
 
@@ -457,4 +457,4 @@ pytest --cov=cloakmcp         # with coverage
 
 ---
 
-*CloakMCP v0.13.0 — Olivier Vitrac, Adservio Innovation Lab*
+*CloakMCP v0.13.1 — Olivier Vitrac, Adservio Innovation Lab*

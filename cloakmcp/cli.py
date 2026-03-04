@@ -790,7 +790,8 @@ def main() -> None:
         try:
             from .fastmcp_server import create_server, build_parser as mcp_parser
         except ImportError:
-            print("MCP dependencies not installed. Run: pip install cloakmcp[mcp]",
+            from .installer import _install_hint
+            print(f"MCP dependencies not installed. Run: {_install_hint('mcp')}",
                   file=sys.stderr)
             sys.exit(1)
         server_argv = []

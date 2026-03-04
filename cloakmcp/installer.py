@@ -17,6 +17,33 @@ from typing import Dict, List, Optional
 from .storage import _safe_chmod
 
 
+# ---------------------------------------------------------------------------
+# Installation route detection (pipx vs pip)
+# ---------------------------------------------------------------------------
+
+def _is_pipx() -> bool:
+    """Detect whether cloakmcp is running inside a pipx-managed venv."""
+    return "pipx" in sys.prefix.replace("\\", "/").lower()
+
+
+def _install_hint(extra: str = "") -> str:
+    """Return an install command hint appropriate to the current environment.
+
+    Examples:
+        _install_hint()      -> 'pipx install cloakmcp'   (if pipx)
+        _install_hint()      -> 'pip install cloakmcp'    (otherwise)
+        _install_hint("mcp") -> 'pipx inject cloakmcp "mcp[cli]"'  (if pipx)
+        _install_hint("mcp") -> 'pip install cloakmcp[mcp]'        (otherwise)
+    """
+    if not extra:
+        return "pipx install cloakmcp" if _is_pipx() else "pip install cloakmcp"
+    if _is_pipx():
+        if extra == "mcp":
+            return 'pipx inject cloakmcp "mcp[cli]"'
+        return f'pipx inject cloakmcp "cloakmcp[{extra}]"'
+    return f"pip install cloakmcp[{extra}]"
+
+
 def _scripts_dir() -> str:
     """Path to bundled scripts directory."""
     return str(pkg_files("cloakmcp") / "scripts")
@@ -113,7 +140,7 @@ def install_hooks(
         cloak_path = shutil.which("cloak")
         if not cloak_path:
             result["errors"].append("'cloak' not found in PATH")
-            print("[ERROR] 'cloak' not found in PATH. Install: pip install cloakmcp",
+            print(f"[ERROR] 'cloak' not found in PATH. Install: {_install_hint()}",
                   file=sys.stderr)
             return result
 

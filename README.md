@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/cloakmcp.svg)](https://pypi.org/project/cloakmcp/)
-[![Version](https://img.shields.io/badge/version-0.13.0-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
-[![Tests](https://img.shields.io/badge/tests-394%20passing-brightgreen.svg)](./tests)
+[![Version](https://img.shields.io/badge/version-0.13.1-orange.svg)](https://github.com/ovitrac/CloakMCP/releases)
+[![Tests](https://img.shields.io/badge/tests-401%20passing-brightgreen.svg)](./tests)
 [![MCP](https://img.shields.io/badge/MCP-6%20tools-blueviolet.svg)](#mcp-tool-server--6-tools)
 [![DeepWiki](https://img.shields.io/badge/Docs-DeepWiki-purple.svg)](https://deepwiki.com/ovitrac/CloakMCP)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -307,11 +307,20 @@ cd demo && bash run_demo.sh              # interactive 5-act presentation
 
 ### 1. Install
 
+**From PyPI** (recommended):
+
+```bash
+pipx install cloakmcp              # isolated install, cloak available globally
+# or
+pip install cloakmcp               # into current environment
+pip install cloakmcp[mcp]          # optional: enables cloak serve (FastMCP)
+```
+
+**From source** (development):
+
 ```bash
 git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[mcp]"   # optional: enables cloak serve (FastMCP)
+pip install -e ".[mcp]"
 ```
 
 > Vault keys are auto-generated on first use — no manual key setup required.
@@ -672,14 +681,14 @@ All endpoints require Bearer token authentication. Server binds to `127.0.0.1` o
 ```bash
 pip install -e ".[test]"
 
-# Run all tests (394+ passing)
+# Run all tests (401 passing)
 pytest
 
 # Run with coverage
 pytest --cov=cloakmcp --cov-report=term
 ```
 
-**Test suite**: 394+ tests across 10 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, enterprise policy tests, backup encryption, key wrapping, backup lifecycle, cross-platform hooks, idempotency, and Windows platform guards.
+**Test suite**: 401 tests across 10 test files covering unit tests, integration tests, API tests, hook tests, MCP server tests, enterprise policy tests, backup encryption, key wrapping, backup lifecycle, cross-platform hooks, idempotency, and Windows platform guards.
 
 ---
 
@@ -706,7 +715,7 @@ CloakMCP/
 │   ├── server.py                  # FastAPI REST server (localhost)
 │   ├── storage.py                 # Vault encryption (Fernet AES-128, scrypt key wrapping)
 │   └── utils.py                   # Utilities (hashing, encoding)
-├── tests/                         # Test suite (394+ tests, 10 files)
+├── tests/                         # Test suite (401 tests, 10 files)
 │   ├── conftest.py                # Autouse fixture for ~/.cloakmcp/ artifact cleanup
 │   ├── test_comprehensive.py      # Full feature tests
 │   ├── test_api.py                # API endpoint tests
@@ -751,7 +760,7 @@ CloakMCP/
 ├── .mcp.json                      # MCP server discovery for Claude Code
 ├── .vscode/                       # VS Code integration (tasks, keybindings)
 ├── .mcpignore                     # Pack/unpack exclusion patterns
-├── pyproject.toml                 # Package metadata (v0.13.0)
+├── pyproject.toml                 # Package metadata (v0.13.1)
 ├── pytest.ini                     # Pytest configuration
 ├── CHANGELOG.md                   # Full release history
 ├── SECURITY.md                    # Security policy and disclosure
@@ -787,9 +796,8 @@ CloakMCP/
 Contributions welcome! See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
 
 ```bash
-# Development setup
+# Development setup (from source)
 git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
-python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]"
 
 # Code quality
@@ -807,7 +815,7 @@ Commit convention: `type(scope): description` (e.g., `feat(hooks): add guard-wri
 
 See **[`CHANGELOG.md`](CHANGELOG.md)** for the full release history.
 
-**Latest**: v0.13.0 — Windows installation hardening, doc refresh (v0.12.0: cross-platform hooks, v0.11.0: key hardening)
+**Latest**: v0.13.1 — PyPI/pipx install recommended (v0.13.0: Windows hardening, v0.12.0: cross-platform hooks)
 
 ---
 

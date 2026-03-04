@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-03-04
+
+### Added
+- **`_is_pipx()` / `_install_hint()`** in `installer.py`: auto-detects whether CloakMCP runs
+  inside a pipx-managed venv and emits context-appropriate install commands (`pipx inject` vs
+  `pip install`). Used in installer "cloak not found" error and `cloak serve` MCP import error
+
+### Documentation
+- **PyPI / pipx installation**: all user-facing docs now recommend `pipx install cloakmcp` (or
+  `pip install cloakmcp`) as the primary install method. `git clone` + `pip install -e .` moved
+  to "from source (development)" sections. Updated: README.md, QUICKSTART.md, QUICKREF.md
+- Troubleshooting entries updated: `cloak: command not found` now suggests `pipx install cloakmcp`
+  alongside venv activation
+
+### Changed
+- `installer.py`: error messages use `_install_hint()` for environment-aware suggestions
+- `cli.py`: `cloak serve` import error uses `_install_hint("mcp")` (emits `pipx inject` when
+  appropriate)
+
 ## [0.13.0] - 2026-03-04
 
 ### Fixed
@@ -493,7 +512,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HMAC-based pseudonymization
 - JSONL audit logging
 
-[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/ovitrac/CloakMCP/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/ovitrac/CloakMCP/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ovitrac/CloakMCP/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/ovitrac/CloakMCP/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/ovitrac/CloakMCP/compare/v0.12.1...v0.12.2

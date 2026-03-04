@@ -426,6 +426,48 @@ class TestWindowsPlatformGuards:
         assert exc_info.value.code == 1
 
 
+# ── Install hint detection (pipx vs pip) ────────────────────────
+
+
+class TestInstallHint:
+    """Verify _is_pipx detection and _install_hint output."""
+
+    def test_is_pipx_true(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/.local/pipx/venvs/cloakmcp")
+        assert installer._is_pipx() is True
+
+    def test_is_pipx_false_venv(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/project/.venv")
+        assert installer._is_pipx() is False
+
+    def test_is_pipx_windows_path(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "C:\\Users\\dev\\pipx\\venvs\\cloakmcp")
+        assert installer._is_pipx() is True
+
+    def test_hint_base_pipx(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/.local/pipx/venvs/cloakmcp")
+        assert installer._install_hint() == "pipx install cloakmcp"
+
+    def test_hint_base_pip(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/project/.venv")
+        assert installer._install_hint() == "pip install cloakmcp"
+
+    def test_hint_mcp_pipx(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/.local/pipx/venvs/cloakmcp")
+        assert installer._install_hint("mcp") == 'pipx inject cloakmcp "mcp[cli]"'
+
+    def test_hint_mcp_pip(self, monkeypatch):
+        from cloakmcp import installer
+        monkeypatch.setattr(installer.sys, "prefix", "/home/user/project/.venv")
+        assert installer._install_hint("mcp") == "pip install cloakmcp[mcp]"
+
+
 # ── Doctor hook validation ──────────────────────────────────────
 
 

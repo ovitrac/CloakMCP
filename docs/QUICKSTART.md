@@ -1,6 +1,6 @@
 # CloakMCP Quickstart
 
-**Version**: 0.13.0 | **Time to first pack: ~5 minutes**
+**Version**: 0.13.1 | **Time to first pack: ~5 minutes**
 
 CloakMCP replaces secrets in your code with opaque tags before anything leaves your machine. LLMs see `TAG-2f1a8e3c9b12` instead of your actual API keys, tokens, and credentials. You get them back with one command.
 
@@ -8,19 +8,23 @@ CloakMCP replaces secrets in your code with opaque tags before anything leaves y
 
 ## 1. Install and Verify
 
-### Linux / macOS
+### From PyPI (recommended)
 
 ```bash
-git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pipx install cloakmcp              # isolated install, cloak available globally
+# or
+pip install cloakmcp               # into current environment
 ```
 
-### Windows (PowerShell)
+### From source (development)
 
-```powershell
+```bash
+# Linux / macOS
+git clone https://github.com/ovitrac/CloakMCP.git && cd CloakMCP
+pip install -e .
+
+# Windows (PowerShell)
 git clone https://github.com/ovitrac/CloakMCP.git; cd CloakMCP
-python -m venv .venv; .venv\Scripts\Activate.ps1
 pip install -e .
 ```
 
@@ -32,7 +36,7 @@ pip install -e .
 cloak scan --policy examples/mcp_policy.yaml --input examples/client_sanitize.py
 ```
 
-You should see detection output listing found secrets (emails, tokens). If you see `cloak: command not found`, your venv is not activated.
+You should see detection output listing found secrets (emails, tokens). If you see `cloak: command not found`, run `pipx install cloakmcp` or activate your venv.
 
 **Check installation health:**
 
@@ -304,7 +308,7 @@ This detects stale `.cloak-session-state` files and runs unpack to restore secre
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `cloak: command not found` | Venv not activated | `source .venv/bin/activate` |
+| `cloak: command not found` | Not installed or venv not activated | `pipx install cloakmcp` or `source .venv/bin/activate` |
 | No secrets detected | Wrong policy or file excluded | Check policy path, check `.mcpignore` |
 | Hooks not firing | Not installed or wrong directory | Run `cloak install`, verify `.claude/settings.local.json` |
 | `InvalidToken` on unpack | Wrong vault key | Check `~/.cloakmcp/keys/` — slug matches project path |
@@ -330,4 +334,4 @@ This detects stale `.cloak-session-state` files and runs unpack to restore secre
 
 ---
 
-*CloakMCP v0.13.0 — Olivier Vitrac, Adservio Innovation Lab*
+*CloakMCP v0.13.1 — Olivier Vitrac, Adservio Innovation Lab*
